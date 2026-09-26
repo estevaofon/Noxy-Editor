@@ -1,0 +1,101 @@
+// editor.nx — Noxy Editor. Um editor de codigo para arquivos Noxy, escrito
+// em Noxy: o navegador so pinta e encaminha entrada.
+//     noxy editor.nx [pasta | arquivo]      (sem argumento: o diretorio atual)
+// A routine principal e a dona do estado: recebe os eventos que o servidor
+// (src/server, em routines da stdlib) poe no canal, aplica na sessao e
+// responde o quadro. A janela e a extensao noxy_webview, com fallback para
+// o navegador em modo app (src/launch).
+use sys
+use io
+use uuid
+use strings select starts_with, substring, ends_with
+use src.session as session
+use src.events as events
+use src.server as server
+use src.launch as launch
+
+func absolute(path: string) -> string
+    if starts_with(path, "/") then
+        return path
+    end
+    if path == "." then
+        return sys.getcwd()
+    end
+    if starts_with(path, "./") then
+        return sys.getcwd() + "/" + substring(path, 2, length(path))
+    end
+    return sys.getcwd() + "/" + path
+end
+
+func strip_slash(path: string) -> string
+    if length(path) > 1 && ends_with(path, "/") then
+        return substring(path, 0, length(path) - 1)
+    end
+    return path
+end
+
+let args: string[] = sys.argv()
+let editor_dir: string = session.dirname(absolute(args[1]))
+let target: string = sys.getcwd()
+if length(args) > 2 then
+    target = strip_slash(absolute(args[2]))
+end
+let first_file: string = ""
+let st: io.FileInfo = io.stat(target)
+if !st.exists then
+    eprint("nao encontrei " + target)
+    sys.exit(1)
+end
+if !st.is_dir then
+    first_file = target
+    target = session.dirname(target)
+end
+
+let s: session.Session = session.new_session(target)
+if !session.load(ref s) then
+    eprint("nao consegui ler a pasta " + target)
+    sys.exit(1)
+end
+if first_file != "" then
+    session.open_file(ref s, first_file)
+end
+
+let port: int = server.start(editor_dir + "/web", uuid.uuid4())
+if port == 0 then
+    eprint("nao consegui abrir uma porta em 127.0.0.1")
+    sys.exit(1)
+end
+let url: string = "http://127.0.0.1:" + to_str(port) + "/?t=" + server.token
+let mode: string = "none"
+if !sys.getenv("NOXY_EDITOR_NO_WINDOW").ok then
+    mode = launch.open_window(url)
+end
+if mode == "" then
+    eprint("nao consegui abrir uma janela; abra " + url + " num navegador")
+else
+    eprint("Noxy Editor em " + url + " (" + mode + ")")
+end
+
+// delayed_quit: a pagina avisou que esta fechando; se em 3 s nao chegar
+// evento novo (um reload manda init de novo), o editor encerra.
+func delayed_quit() -> void
+    sys.sleep(3000)
+    let reply: chan any = make_chan(1)
+    chan_send(server.inbox, server.Request("{\"kind\":\"quit_if_idle\"}", reply))
+    chan_recv(reply)
+end
+
+while !s.quitting do
+    let r: any = chan_recv(server.inbox)
+    let req: server.Request = r
+    let now: int = time_now()
+    let out: string = events.dispatch(ref s, req.body, now)
+    chan_send(req.reply, out)
+    if s.bye then
+        s.bye = false
+        spawn(delayed_quit)
+    end
+end
+server.stop()
+launch.close_window()
+sys.exit(0)

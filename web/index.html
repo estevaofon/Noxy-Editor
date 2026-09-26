@@ -6,6 +6,40 @@
 <link rel="stylesheet" href="/editor.css">
 </head>
 <body>
+<div id="app">
+  <aside id="sidebar">
+    <div id="root-name"></div>
+    <div id="tree"></div>
+  </aside>
+  <main id="main">
+    <div id="tabbar">
+      <div id="tabs"></div>
+      <button id="run-btn" title="Executar (F5)">▶ Executar</button>
+    </div>
+    <div id="editor">
+      <div id="gutter"></div>
+      <div id="text"></div>
+      <div id="cursor" class="hidden"></div>
+      <div id="welcome">Abra um arquivo na árvore à esquerda.</div>
+    </div>
+    <div id="output" class="hidden">
+      <div id="output-head"><span>Saída</span><button id="output-close" title="Fechar">×</button></div>
+      <pre id="output-text"></pre>
+    </div>
+    <div id="status">
+      <span id="status-left"></span>
+      <span id="status-msg"></span>
+      <span id="status-right"></span>
+    </div>
+  </main>
+</div>
+<div id="modal" class="hidden">
+  <div id="modal-box">
+    <div id="modal-text"></div>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
+<textarea id="input" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
 <script src="/editor.js"></script>
 </body>
 </html>

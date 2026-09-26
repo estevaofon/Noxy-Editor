@@ -1,0 +1,46 @@
+// src/launch.nx — abre a janela do editor. Nesta fase so o fallback: um
+// navegador em modo app (janela sem barra de endereco) ou o navegador
+// padrao. A extensao noxy_webview entra na frente disso na Task 16.
+use sys
+use strings select replace
+
+let BROWSERS: string[] = ["google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"]
+let mode: string = ""       // "app", "browser" ou ""
+
+func has_command(name: string) -> bool
+    return sys.exec("command -v " + name + " >/dev/null 2>&1").exit_code == 0
+end
+
+func shell_quote(s: string) -> string
+    return "'" + replace(s, "'", "'\\''") + "'"
+end
+
+// open_browser devolve "app" (janela sem barra), "browser" ou "".
+func open_browser(url: string) -> string
+    let q: string = shell_quote(url)
+    for b in BROWSERS do
+        if has_command(b) then
+            sys.exec(b + " --app=" + q + " >/dev/null 2>&1 &")
+            return "app"
+        end
+    end
+    if sys.os() == "darwin" then
+        sys.exec("open " + q)
+        return "browser"
+    end
+    if has_command("xdg-open") then
+        sys.exec("xdg-open " + q + " >/dev/null 2>&1 &")
+        return "browser"
+    end
+    return ""
+end
+
+// open_window devolve como a janela foi aberta ("app", "browser") ou "".
+func open_window(url: string) -> string
+    mode = open_browser(url)
+    return mode
+end
+
+// close_window fecha a janela se ela e nossa; no fallback nao ha o que fechar.
+func close_window() -> void
+end
