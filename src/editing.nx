@@ -1,0 +1,327 @@
+// src/editing.nx — o editor de uma aba: cursor, ancora da selecao, scroll e
+// as operacoes de edicao sobre um Document, com History. Toda operacao que
+// muda o texto grava um snapshot antes; toda operacao que move o cursor
+// chama ensure_visible para ele nao sair da tela. rows e o numero de linhas
+// visiveis, informado pelo cliente a cada evento. As funcoes sao declaradas
+// antes de quem as chama.
+use strings select substring, codes, starts_with
+use src.document as doc
+use src.history as history
+
+let TAB = "    "
+
+struct Editor
+    doc: doc.Document
+    cursor: doc.Pos
+    anchor: doc.Pos     // outra ponta da selecao; igual ao cursor sem selecao
+    top: int            // primeira linha visivel
+    goal_col: int       // coluna desejada ao subir e descer; -1 sem meta
+    history: history.History
+end
+
+func new_editor(d: doc.Document) -> Editor
+    return Editor(d, doc.Pos(0, 0), doc.Pos(0, 0), 0, -1, history.new_history())
+end
+
+func has_sel(ed: Editor) -> bool
+    return !doc.same(ed.cursor, ed.anchor)
+end
+
+func sel_range(ed: Editor) -> doc.Range
+    return doc.ordered(ed.cursor, ed.anchor)
+end
+
+func snapshot(ed: Editor) -> history.Snapshot
+    return history.Snapshot(ed.doc.lines, ed.cursor)
+end
+
+func max0(v: int) -> int
+    if v < 0 then
+        return 0
+    end
+    return v
+end
+
+func first_non_space(line: string) -> int
+    let cs: int[] = codes(line)
+    let i: int = 0
+    while i < length(cs) && (cs[i] == 32 || cs[i] == 9) do
+        i = i + 1
+    end
+    return i
+end
+
+func is_word(c: int) -> bool
+    return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95 || c > 127
+end
+
+// char_class: 0 espaco, 1 palavra, 2 pontuacao — para saltar por palavra.
+func char_class(c: int) -> int
+    if c == 32 || c == 9 then
+        return 0
+    end
+    if is_word(c) then
+        return 1
+    end
+    return 2
+end
+
+// word_right: a proxima fronteira de palavra a direita de col; -1 no fim.
+func word_right(line: string, col: int) -> int
+    let cs: int[] = codes(line)
+    let n: int = length(cs)
+    if col >= n then
+        return -1
+    end
+    let i: int = col
+    while i < n && char_class(cs[i]) == 0 do
+        i = i + 1
+    end
+    if i < n then
+        let k: int = char_class(cs[i])
+        while i < n && char_class(cs[i]) == k do
+            i = i + 1
+        end
+    end
+    return i
+end
+
+func word_left(line: string, col: int) -> int
+    let cs: int[] = codes(line)
+    if col <= 0 then
+        return -1
+    end
+    let i: int = col
+    while i > 0 && char_class(cs[i - 1]) == 0 do
+        i = i - 1
+    end
+    if i > 0 then
+        let k: int = char_class(cs[i - 1])
+        while i > 0 && char_class(cs[i - 1]) == k do
+            i = i - 1
+        end
+    end
+    return i
+end
+
+func ensure_visible(ed: ref Editor, rows: int) -> void
+    let r: int = rows
+    if r < 1 then
+        r = 1
+    end
+    if ed.cursor.line < ed.top then
+        ed.top = ed.cursor.line
+    elif ed.cursor.line >= ed.top + r then
+        ed.top = ed.cursor.line - r + 1
+    end
+    let max_top: int = max0(length(ed.doc.lines) - r)
+    if ed.top > max_top then
+        ed.top = max_top
+    end
+    if ed.top < 0 then
+        ed.top = 0
+    end
+end
+
+// scroll move so a janela, nunca o cursor.
+func scroll(ed: ref Editor, delta: int, rows: int) -> void
+    let max_top: int = max0(length(ed.doc.lines) - rows)
+    let t: int = ed.top + delta
+    if t < 0 then
+        t = 0
+    end
+    if t > max_top then
+        t = max_top
+    end
+    ed.top = t
+end
+
+// place poe o cursor em p (clampado); sem shift a ancora acompanha.
+func place(ed: ref Editor, p: doc.Pos, shift: bool, rows: int) -> void
+    ed.cursor = doc.clamp(ed.doc, p)
+    if !shift then
+        ed.anchor = ed.cursor
+    end
+    ensure_visible(ed, rows)
+end
+
+func move_left(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    if !shift && has_sel(*ed) then
+        place(ed, sel_range(*ed).start, false, rows)
+        return
+    end
+    let p: doc.Pos = ed.cursor
+    if p.col > 0 then
+        place(ed, doc.Pos(p.line, p.col - 1), shift, rows)
+    elif p.line > 0 then
+        place(ed, doc.Pos(p.line - 1, doc.line_len(ed.doc, p.line - 1)), shift, rows)
+    end
+end
+
+func move_right(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    if !shift && has_sel(*ed) then
+        place(ed, sel_range(*ed).stop, false, rows)
+        return
+    end
+    let p: doc.Pos = ed.cursor
+    if p.col < doc.line_len(ed.doc, p.line) then
+        place(ed, doc.Pos(p.line, p.col + 1), shift, rows)
+    elif p.line + 1 < length(ed.doc.lines) then
+        place(ed, doc.Pos(p.line + 1, 0), shift, rows)
+    end
+end
+
+// move_vertical anda delta linhas mantendo a coluna desejada (goal_col).
+func move_vertical(ed: ref Editor, delta: int, shift: bool, rows: int) -> void
+    if ed.goal_col < 0 then
+        ed.goal_col = ed.cursor.col
+    end
+    let goal: int = ed.goal_col
+    let line: int = ed.cursor.line + delta
+    if line < 0 then
+        line = 0
+    end
+    let last: int = length(ed.doc.lines) - 1
+    if line > last then
+        line = last
+    end
+    place(ed, doc.Pos(line, goal), shift, rows)
+    ed.goal_col = goal
+end
+
+func move_up(ed: ref Editor, shift: bool, rows: int) -> void
+    move_vertical(ed, -1, shift, rows)
+end
+
+func move_down(ed: ref Editor, shift: bool, rows: int) -> void
+    move_vertical(ed, 1, shift, rows)
+end
+
+func page_up(ed: ref Editor, shift: bool, rows: int) -> void
+    move_vertical(ed, -(rows - 1), shift, rows)
+end
+
+func page_down(ed: ref Editor, shift: bool, rows: int) -> void
+    move_vertical(ed, rows - 1, shift, rows)
+end
+
+// move_home alterna entre o primeiro nao-espaco e a coluna 0.
+func move_home(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    let fns: int = first_non_space(ed.doc.lines[ed.cursor.line])
+    let col: int = fns
+    if ed.cursor.col == fns then
+        col = 0
+    end
+    place(ed, doc.Pos(ed.cursor.line, col), shift, rows)
+end
+
+func move_end(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    place(ed, doc.Pos(ed.cursor.line, doc.line_len(ed.doc, ed.cursor.line)), shift, rows)
+end
+
+func move_doc_start(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    place(ed, doc.Pos(0, 0), shift, rows)
+end
+
+func move_doc_end(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    let last: int = length(ed.doc.lines) - 1
+    place(ed, doc.Pos(last, doc.line_len(ed.doc, last)), shift, rows)
+end
+
+func move_word_right(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    let p: doc.Pos = ed.cursor
+    let c: int = word_right(ed.doc.lines[p.line], p.col)
+    if c >= 0 then
+        place(ed, doc.Pos(p.line, c), shift, rows)
+    elif p.line + 1 < length(ed.doc.lines) then
+        place(ed, doc.Pos(p.line + 1, 0), shift, rows)
+    end
+end
+
+func move_word_left(ed: ref Editor, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    let p: doc.Pos = ed.cursor
+    let c: int = word_left(ed.doc.lines[p.line], p.col)
+    if c >= 0 then
+        place(ed, doc.Pos(p.line, c), shift, rows)
+    elif p.line > 0 then
+        place(ed, doc.Pos(p.line - 1, doc.line_len(ed.doc, p.line - 1)), shift, rows)
+    end
+end
+
+func select_all(ed: ref Editor) -> void
+    ed.goal_col = -1
+    let last: int = length(ed.doc.lines) - 1
+    ed.anchor = doc.Pos(0, 0)
+    ed.cursor = doc.Pos(last, doc.line_len(ed.doc, last))
+end
+
+// select_word_at seleciona a palavra sob p (duplo clique); sem palavra,
+// um caractere.
+func select_word_at(ed: ref Editor, p: doc.Pos, rows: int) -> void
+    let q: doc.Pos = doc.clamp(ed.doc, p)
+    let cs: int[] = codes(ed.doc.lines[q.line])
+    let a: int = q.col
+    let b: int = q.col
+    while a > 0 && is_word(cs[a - 1]) do
+        a = a - 1
+    end
+    while b < length(cs) && is_word(cs[b]) do
+        b = b + 1
+    end
+    if a == b && b < length(cs) then
+        b = b + 1
+    end
+    ed.goal_col = -1
+    ed.anchor = doc.Pos(q.line, a)
+    ed.cursor = doc.Pos(q.line, b)
+    ensure_visible(ed, rows)
+end
+
+// select_line seleciona a linha n inteira, com a quebra (clique no gutter).
+func select_line(ed: ref Editor, n: int, rows: int) -> void
+    let last: int = length(ed.doc.lines) - 1
+    let line: int = n
+    if line < 0 then
+        line = 0
+    end
+    if line > last then
+        line = last
+    end
+    ed.goal_col = -1
+    ed.anchor = doc.Pos(line, 0)
+    if line < last then
+        ed.cursor = doc.Pos(line + 1, 0)
+    else
+        ed.cursor = doc.Pos(line, doc.line_len(ed.doc, line))
+    end
+    ensure_visible(ed, rows)
+end
+
+func click(ed: ref Editor, p: doc.Pos, shift: bool, rows: int) -> void
+    ed.goal_col = -1
+    place(ed, p, shift, rows)
+end
+
+// drag move so o cursor; a ancora fica onde o clique comecou.
+func drag(ed: ref Editor, p: doc.Pos, rows: int) -> void
+    ed.goal_col = -1
+    ed.cursor = doc.clamp(ed.doc, p)
+    ensure_visible(ed, rows)
+end
+
+// copy sem selecao devolve a linha inteira com a quebra (VS Code).
+func copy(ed: Editor) -> string
+    if has_sel(ed) then
+        let r: doc.Range = sel_range(ed)
+        return doc.text_range(ed.doc, r.start, r.stop)
+    end
+    return ed.doc.lines[ed.cursor.line] + "\n"
+end

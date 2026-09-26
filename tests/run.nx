@@ -5,6 +5,7 @@ use src.document as doc
 use src.lexer as lexer
 use io
 use src.history as history
+use src.editing as editing
 
 let fails = 0
 let total = 0
@@ -136,7 +137,85 @@ func test_history() -> void
     check("limite de 200 entradas", length(big.undo) == 200)
 end
 
+func ed_of(text: string) -> editing.Editor
+    return editing.new_editor(doc.from_text("t.nx", text))
+end
+
+func at(ed: editing.Editor, line: int, col: int) -> bool
+    return ed.cursor.line == line && ed.cursor.col == col
+end
+
+func test_editing_moves() -> void
+    print("editing: movimentos e selecao")
+    let ed: editing.Editor = ed_of("abc\n    def\nghi")
+    editing.move_right(ref ed, false, 10)
+    editing.move_right(ref ed, false, 10)
+    editing.move_right(ref ed, false, 10)
+    editing.move_right(ref ed, false, 10)
+    check("right no fim da linha vai para a proxima", at(ed, 1, 0))
+    editing.move_left(ref ed, false, 10)
+    check("left no inicio volta ao fim da anterior", at(ed, 0, 3))
+    editing.move_down(ref ed, false, 10)
+    editing.move_down(ref ed, false, 10)
+    check("down mantem a coluna desejada", at(ed, 2, 3))
+    editing.move_up(ref ed, false, 10)
+    check("up volta com a meta", at(ed, 1, 3))
+    editing.move_home(ref ed, false, 10)
+    check("home vai ao primeiro nao-espaco", at(ed, 1, 4))
+    editing.move_home(ref ed, false, 10)
+    check("home de novo vai a coluna 0", at(ed, 1, 0))
+    editing.move_end(ref ed, false, 10)
+    check("end", at(ed, 1, 7))
+    editing.move_doc_start(ref ed, false, 10)
+    check("ctrl+home", at(ed, 0, 0))
+    editing.move_doc_end(ref ed, false, 10)
+    check("ctrl+end", at(ed, 2, 3))
+
+    let w: editing.Editor = ed_of("let  x_1 = foo(bar)")
+    editing.move_word_right(ref w, false, 10)
+    check("ctrl+right salta a palavra", at(w, 0, 3))
+    editing.move_word_right(ref w, false, 10)
+    check("ctrl+right pula espacos e a proxima palavra", at(w, 0, 8))
+    editing.move_word_right(ref w, false, 10)
+    check("ctrl+right trata pontuacao como bloco", at(w, 0, 10))
+    editing.move_word_left(ref w, false, 10)
+    editing.move_word_left(ref w, false, 10)
+    check("ctrl+left volta ao inicio da palavra", at(w, 0, 5))
+
+    let s: editing.Editor = ed_of("abc\ndef")
+    editing.move_right(ref s, true, 10)
+    editing.move_right(ref s, true, 10)
+    check("shift+right seleciona", editing.has_sel(s) && editing.copy(s) == "ab")
+    editing.move_left(ref s, false, 10)
+    check("left sem shift colapsa no inicio da selecao", !editing.has_sel(s) && at(s, 0, 0))
+    editing.select_all(ref s)
+    check("selecionar tudo", editing.copy(s) == "abc\ndef")
+    editing.select_word_at(ref s, doc.Pos(1, 1), 10)
+    check("duplo clique seleciona a palavra", editing.copy(s) == "def")
+    editing.select_line(ref s, 0, 10)
+    check("clique no gutter seleciona a linha com a quebra", editing.copy(s) == "abc\n")
+    editing.click(ref s, doc.Pos(0, 1), false, 10)
+    editing.drag(ref s, doc.Pos(1, 1), 10)
+    check("arrastar seleciona do clique ate o mouse", editing.copy(s) == "bc\nd")
+    check("copy sem selecao pega a linha inteira", editing.copy(ed_of("xy\nz")) == "xy\n")
+
+    let v: editing.Editor = ed_of("0\n1\n2\n3\n4\n5\n6\n7\n8\n9")
+    editing.move_doc_end(ref v, false, 3)
+    check("ensure_visible desce a janela", v.top == 7)
+    editing.move_doc_start(ref v, false, 3)
+    check("ensure_visible sobe a janela", v.top == 0)
+    editing.scroll(ref v, 5, 3)
+    check("scroll move so a janela", v.top == 5 && at(v, 0, 0))
+    editing.scroll(ref v, 100, 3)
+    check("scroll nao passa do fim", v.top == 7)
+    editing.page_down(ref v, false, 3)
+    check("pagedown anda rows-1", at(v, 2, 0))
+    editing.click(ref v, doc.Pos(99, 99), false, 3)
+    check("clique alem do fim vai para o fim da ultima linha", at(v, 9, 1) && v.top == 7)
+end
+
 test_document()
 test_lexer()
 test_history()
+test_editing_moves()
 report()
