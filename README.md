@@ -13,10 +13,33 @@ da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.m
 Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
 arquivo numa aba. A janela é a extensão
 [noxy_webview](https://github.com/estevaofon/noxy_webview), que precisa estar
-instalada (`noxy --sync`); se ela não conseguir abrir a janela nesta máquina
-(sem WebKitGTK, por exemplo), o editor abre num navegador em modo app (Chrome,
-Chromium, Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
+instalada (veja "Extensão de janela"); se ela não conseguir abrir a janela
+nesta máquina, o editor abre num navegador em modo app (Chrome, Chromium,
+Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
 só imprime a URL, para desenvolver o cliente ou rodar o smoke.
+
+## Extensão de janela
+
+A janela nativa é o package `noxy_webview`, que o editor importa em
+`src/launch.nx`. Sem o binário dele em `noxy_libs/.../noxy_webview/bin/` a VM
+recusa o `use` na compilação e o editor não abre (é o achado 7 em
+`docs/ACHADOS.md`). Dois caminhos:
+
+- **Publicado** (quando houver release no GitHub): `require
+  github.com/estevaofon/noxy_webview vX.Y.Z` no `noxy.mod` e `noxy --sync`,
+  que baixa o binário da sua plataforma e grava os hashes em `noxy.sum`.
+- **Desenvolvimento** (hoje): clone `noxy_webview` ao lado deste repositório,
+  compile (`sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev`, então
+  `sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/`)
+  e linke o checkout em
+  `noxy_libs/github_com/estevaofon/noxy_webview`. A VM avisa uma vez que não
+  há entrada em `noxy.sum` e roda.
+
+Se a extensão estiver instalada mas não conseguir abrir a janela nesta máquina
+(sem `libwebkit2gtk-4.1`, por exemplo), o editor abre num navegador em modo
+app. Nesse modo a URL com o token não vai na linha de comando: o editor grava
+uma página de redirecionamento num diretório temporário só seu e passa o
+caminho dela ao navegador.
 
 ## Atalhos
 
