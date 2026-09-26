@@ -13,6 +13,7 @@ use src.session as session
 use src.events as events
 use src.server as server
 use src.launch as launch
+use src.frame as frame
 
 func absolute(path: string) -> string
     if starts_with(path, "/") then
@@ -76,6 +77,18 @@ else
     eprint("Noxy Editor em " + url + " (" + mode + ")")
 end
 
+// window_watch: a janela da extensao fechou (X ou close); encerra o editor.
+func window_watch() -> void
+    launch.wait_window()
+    let reply: chan any = make_chan(1)
+    chan_send(server.inbox, server.Request("{\"kind\":\"quit\"}", reply))
+    chan_recv(reply)
+end
+
+if mode == "webview" then
+    spawn(window_watch)
+end
+
 // delayed_quit: a pagina avisou que esta fechando; se em 3 s nao chegar
 // evento novo (um reload manda init de novo), o editor encerra.
 func delayed_quit() -> void
@@ -85,6 +98,7 @@ func delayed_quit() -> void
     chan_recv(reply)
 end
 
+let last_title: string = ""
 while !s.quitting do
     let r: any = chan_recv(server.inbox)
     let req: server.Request = r
@@ -94,6 +108,11 @@ while !s.quitting do
     if s.bye then
         s.bye = false
         spawn(delayed_quit)
+    end
+    let title: string = frame.title_of(ref s)
+    if title != last_title then
+        last_title = title
+        launch.set_title(title)
     end
 end
 server.stop()

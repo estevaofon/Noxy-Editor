@@ -1,11 +1,14 @@
-// src/launch.nx — abre a janela do editor. Nesta fase so o fallback: um
-// navegador em modo app (janela sem barra de endereco) ou o navegador
-// padrao. A extensao noxy_webview entra na frente disso na Task 16.
+// src/launch.nx — abre a janela do editor. Primeiro a extensao noxy_webview
+// (janela nativa); se ela falhar — sem binario, sem WebKitGTK, processo
+// morto — um navegador em modo app (janela sem barra de endereco), e por
+// ultimo o navegador padrao. mode guarda o que deu certo.
 use sys
 use strings select replace
+use errors select *
+use github_com.estevaofon.noxy_webview.noxy_webview as webview
 
 let BROWSERS: string[] = ["google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"]
-let mode: string = ""       // "app", "browser" ou ""
+let mode: string = ""       // "webview", "app", "browser" ou ""
 
 func has_command(name: string) -> bool
     return sys.exec("command -v " + name + " >/dev/null 2>&1").exit_code == 0
@@ -35,12 +38,37 @@ func open_browser(url: string) -> string
     return ""
 end
 
-// open_window devolve como a janela foi aberta ("app", "browser") ou "".
+// open_window tenta a extensao e cai para o navegador; devolve o modo.
 func open_window(url: string) -> string
+    let r = call_result(webview.open, "Noxy Editor", 1200, 800, url)
+    if r.ok then
+        mode = "webview"
+        return mode
+    end
+    eprint("janela pela extensao indisponivel: " + r.failure.message + "; abrindo no navegador")
     mode = open_browser(url)
     return mode
 end
 
-// close_window fecha a janela se ela e nossa; no fallback nao ha o que fechar.
+// wait_window bloqueia ate a janela da extensao fechar; nos outros modos
+// volta na hora.
+func wait_window() -> void
+    if mode == "webview" then
+        let r = call_result(webview.wait)
+        if !r.ok then
+            eprint("janela: " + r.failure.message)
+        end
+    end
+end
+
+func set_title(title: string) -> void
+    if mode == "webview" then
+        call_result(webview.set_title, title)
+    end
+end
+
 func close_window() -> void
+    if mode == "webview" then
+        call_result(webview.close)
+    end
 end
