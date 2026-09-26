@@ -23,8 +23,17 @@
     </div>
     <div id="output" class="hidden">
       <div id="output-resize" title="Arraste para redimensionar"></div>
-      <div id="output-head"><span>Saída</span><button id="output-close" title="Fechar (Ctrl+J)">×</button></div>
-      <pre id="output-text"></pre>
+      <div id="output-head">
+        <div id="panel-tabs">
+          <span class="ptab" data-tab="output">Saída</span>
+          <span class="ptab" data-tab="search">Busca</span>
+          <span class="ptab" data-tab="terminal">Terminal</span>
+        </div>
+        <button id="output-close" title="Fechar (Ctrl+J)">×</button>
+      </div>
+      <pre id="output-text" class="pview"></pre>
+      <div id="search-view" class="pview hidden"></div>
+      <div id="term-view" class="pview hidden"></div>
     </div>
     <div id="status">
       <span id="status-left"></span>

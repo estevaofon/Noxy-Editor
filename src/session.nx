@@ -31,6 +31,15 @@ struct Modal
     pending: string     // o que fazer depois: "close_tab:3" ou "quit"
 end
 
+// Panel e o painel inferior: aberto ou nao, e qual aba (output, search,
+// terminal) esta a mostra.
+struct Panel
+    open: bool
+    tab: string
+end
+
+let PANEL_TABS: string[] = ["output", "search", "terminal"]
+
 struct Session
     root: string        // absoluto, sem barra final
     tabs: Tab[]
@@ -46,6 +55,20 @@ struct Session
     bye: bool           // a pagina avisou que esta fechando (pagehide)
     page: string        // id da ultima pagina que mandou evento
     bye_page: string    // id da pagina que se despediu
+    panel: Panel
+end
+
+// show_panel abre o painel numa aba; uma aba desconhecida e ignorada.
+func show_panel(s: ref Session, tab: string) -> void
+    if !contains(PANEL_TABS, tab) then
+        return
+    end
+    s.panel.open = true
+    s.panel.tab = tab
+end
+
+func toggle_panel(s: ref Session) -> void
+    s.panel.open = !s.panel.open
 end
 
 func no_modal() -> Modal
@@ -53,7 +76,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "")
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"))
 end
 
 func basename(path: string) -> string

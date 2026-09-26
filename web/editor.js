@@ -11,6 +11,7 @@
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
     editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
+    panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     input: $("input"),
@@ -92,12 +93,10 @@
     els.statusMsg.textContent = f.status.message;
     if (f.output.version !== outputVersion) {
       outputVersion = f.output.version;
-      if (f.output.version > 0) {
-        showOutput(true);
-        els.outputText.textContent = f.output.text + (f.output.running ? "\n…" : "");
-        els.outputText.scrollTop = els.outputText.scrollHeight;
-      }
+      els.outputText.textContent = f.output.text + (f.output.running ? "\n…" : "");
+      els.outputText.scrollTop = els.outputText.scrollHeight;
     }
+    renderPanel(f.panel);
     renderModal(f.modal);
     if (f.clipboard) {
       internalClip = f.clipboard;
@@ -225,7 +224,7 @@
   // chegam pelo textarea (input / compositionend), o que faz acentos e IME
   // funcionarem.
   const NAV = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1, Tab: 1, Escape: 1, F5: 1 };
-  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
+  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
 
   els.input.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
@@ -234,7 +233,6 @@
       if (key === "c") { e.preventDefault(); send({ kind: "copy" }); return; }
       if (key === "x") { e.preventDefault(); send({ kind: "cut" }); return; }
       if (key === "v") return;
-      if (key === "j") { e.preventDefault(); showOutput(els.output.classList.contains("hidden")); return; }
       if (CTRL[key]) { e.preventDefault(); send({ kind: "key", key, ctrl: true, shift: e.shiftKey, alt: e.altKey }); }
       return;
     }
@@ -345,8 +343,10 @@
     outputH = clampOutputHeight(h);
     els.main.style.setProperty("--output-h", outputH + "px");
   }
-  function showOutput(on) {
-    if (!on) {
+  // renderPanel: aberto ou fechado e a aba ativa vem do quadro; a altura e
+  // conveniencia local
+  function renderPanel(panel) {
+    if (!panel.open) {
       els.output.classList.add("hidden");
       els.main.style.setProperty("--output-h", "0px");
       return;
@@ -359,11 +359,18 @@
       setOutputHeight(outputH);
     }
     els.output.classList.remove("hidden");
+    for (const tab of els.panelTabs.querySelectorAll(".ptab")) tab.classList.toggle("active", tab.dataset.tab === panel.tab);
+    els.outputText.classList.toggle("hidden", panel.tab !== "output");
+    els.searchView.classList.toggle("hidden", panel.tab !== "search");
+    els.termView.classList.toggle("hidden", panel.tab !== "terminal");
   }
 
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
-  els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); showOutput(false); });
+  els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_toggle" }); });
+  for (const tab of els.panelTabs.querySelectorAll(".ptab")) {
+    tab.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_tab", key: tab.dataset.tab }); });
+  }
   // o divisor e a barra "Saida" inteira redimensionam, com Pointer Events e
   // captura do ponteiro: uma vez iniciado, o arraste segue o divisor mesmo
   // passando pela barra de rolagem do editor ou saindo da janela

@@ -58,7 +58,9 @@ func run_active(s: ref session.Session) -> void
     let msg: string = runner.start(ref s.run, s.root, session.relative(s.root, path))
     if msg != "" then
         s.message = msg
+        return
     end
+    session.show_panel(s, "output")
 end
 
 func handle_key(s: ref session.Session, e: Event, now: int) -> void
@@ -72,6 +74,14 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
     end
     if e.key == "escape" && s.modal.text != "" then
         session.answer_modal(s, "cancel")
+        return
+    end
+    if e.ctrl && e.key == "j" then
+        session.toggle_panel(s)
+        return
+    end
+    if e.ctrl && e.key == "`" then
+        session.show_panel(s, "terminal")
         return
     end
     if s.active < 0 then
@@ -199,6 +209,10 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         session.open_file(ref s, e.path)
     elif e.kind == "run" then
         run_active(ref s)
+    elif e.kind == "panel_tab" then
+        session.show_panel(ref s, e.key)
+    elif e.kind == "panel_toggle" then
+        session.toggle_panel(ref s)
     elif e.kind == "modal" then
         session.answer_modal(ref s, e.key)
     elif e.kind == "quit" then

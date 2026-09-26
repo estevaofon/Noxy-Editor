@@ -89,9 +89,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #output-resize:hover, #output.resizing #output-resize { background: var(--accent); }
 #output-head { cursor: ns-resize; user-select: none; touch-action: none; }
 #output.resizing { user-select: none; }
-#output-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
+#output-head { display: flex; justify-content: space-between; align-items: center; padding: 0 12px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
+#panel-tabs { display: flex; }
+.ptab { padding: 6px 10px; cursor: pointer; border-bottom: 2px solid transparent; }
+.ptab:hover { color: var(--fg); }
+.ptab.active { color: var(--fg); border-bottom-color: var(--accent); }
+.pview { flex: 1; min-height: 0; overflow: auto; }
+#search-view, #term-view { padding: 4px 14px 10px; }
 #output-close { color: var(--fg-dim); font-size: 16px; line-height: 1; }
-#output-text { flex: 1; min-height: 0; margin: 0; padding: 4px 14px 10px; overflow: auto; font: 13px var(--font-mono); white-space: pre-wrap; }
+#output-text { margin: 0; padding: 4px 14px 10px; font: 13px var(--font-mono); white-space: pre-wrap; }
 
 /* barra de status */
 #status { display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--bg-status); border-top: 1px solid var(--border); font-size: 12px; color: var(--fg-dim); }
