@@ -75,6 +75,16 @@
   }
 
   // ---- render
+  // applyTheme: a escolha vive no settings.json do Noxy; aqui so a classe
+  let theme = "";
+  function applyTheme(name) {
+    if (name === theme) return;
+    const root = document.documentElement;
+    for (const c of Array.from(root.classList)) if (c.startsWith("theme-")) root.classList.remove(c);
+    root.classList.add("theme-" + name);
+    theme = name;
+  }
+
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -85,6 +95,7 @@
   function render(f) {
     frame = f;
     document.title = f.title;
+    applyTheme(f.settings.theme);
     renderTabs(f.tabs);
     if (f.tree_version !== treeVersion) { treeVersion = f.tree_version; renderTree(f.root, f.tree); }
     renderView(f);

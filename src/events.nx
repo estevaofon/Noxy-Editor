@@ -3,13 +3,14 @@
 // aplica dentro de call_result (um bug vira "erro interno" e a sessao fica
 // como estava, porque apply recebe e devolve a sessao por valor), consulta
 // a execucao e devolve o quadro.
-use strings select ends_with
+use strings select ends_with, starts_with, substring
 use errors select *
 use src.document as doc
 use src.editing as editing
 use src.session as session
 use src.runner as runner
 use src.frame as frame
+use src.settings as settings
 
 
 struct Event
@@ -63,13 +64,47 @@ func run_active(s: ref session.Session) -> void
     session.show_panel(s, "output")
 end
 
+// run_command executa um comando pelo id: e o que os atalhos e a paleta
+// chamam, entao os dois nunca divergem. Ids desconhecidos viram mensagem.
+func run_command(s: ref session.Session, id: string, now: int) -> void
+    if id == "save" then
+        session.save(s)
+    elif id == "save_all" then
+        if session.save_all(s) then
+            s.message = "tudo salvo"
+        end
+    elif id == "close_tab" then
+        session.close_tab(s, s.active)
+    elif id == "run" then
+        run_active(s)
+    elif id == "panel" then
+        session.toggle_panel(s)
+    elif id == "terminal" then
+        session.show_panel(s, "terminal")
+    elif id == "quit" then
+        session.request_quit(s)
+    elif starts_with(id, "theme:") then
+        let theme: string = substring(id, 6, length(id))
+        if contains(settings.THEMES, theme) then
+            s.settings.theme = theme
+            if !settings.save(s.settings) then
+                s.message = "nao consegui gravar " + settings.path()
+            end
+        else
+            s.message = "tema desconhecido: " + theme
+        end
+    else
+        s.message = "comando desconhecido: " + id
+    end
+end
+
 func handle_key(s: ref session.Session, e: Event, now: int) -> void
     if e.ctrl && e.key == "q" then
-        session.request_quit(s)
+        run_command(s, "quit", now)
         return
     end
     if e.key == "f5" then
-        run_active(s)
+        run_command(s, "run", now)
         return
     end
     if e.key == "escape" && s.modal.text != "" then
@@ -77,11 +112,11 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
         return
     end
     if e.ctrl && e.key == "j" then
-        session.toggle_panel(s)
+        run_command(s, "panel", now)
         return
     end
     if e.ctrl && e.key == "`" then
-        session.show_panel(s, "terminal")
+        run_command(s, "terminal", now)
         return
     end
     if s.active < 0 then
@@ -91,7 +126,7 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
     let ed: ref editing.Editor = ref s.tabs[s.active].editor
     if e.ctrl then
         if e.key == "s" then
-            session.save(s)
+            run_command(s, "save", now)
         elif e.key == "z" && e.shift then
             editing.redo(ed, rows)
         elif e.key == "z" then
@@ -101,7 +136,7 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
         elif e.key == "a" then
             editing.select_all(ed)
         elif e.key == "w" then
-            session.close_tab(s, s.active)
+            run_command(s, "close_tab", now)
         elif e.key == "/" then
             editing.toggle_comment(ed, rows, now)
         elif e.key == "arrowleft" then
@@ -213,6 +248,8 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         session.show_panel(ref s, e.key)
     elif e.kind == "panel_toggle" then
         session.toggle_panel(ref s)
+    elif e.kind == "command" then
+        run_command(ref s, e.key, now)
     elif e.kind == "modal" then
         session.answer_modal(ref s, e.key)
     elif e.kind == "quit" then

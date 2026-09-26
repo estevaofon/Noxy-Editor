@@ -1,0 +1,67 @@
+// src/settings.nx — as configuracoes do editor em
+// ~/.config/noxy-editor/settings.json (XDG_CONFIG_HOME quando definido;
+// NOXY_EDITOR_CONFIG_DIR sobrepoe os dois, para os testes). Arquivo
+// ausente ou invalido da o padrao; a proxima mudanca regrava.
+use sys
+use io
+use strings select trim
+
+struct Settings
+    theme: string      // um de THEMES
+end
+
+let THEMES: string[] = ["dark", "light", "dracula", "nord", "monokai"]
+
+func default_settings() -> Settings
+    return Settings("dark")
+end
+
+func config_dir() -> string
+    let o: sys.EnvResult = sys.getenv("NOXY_EDITOR_CONFIG_DIR")
+    if o.ok && o.value != "" then
+        return o.value
+    end
+    let x: sys.EnvResult = sys.getenv("XDG_CONFIG_HOME")
+    if x.ok && x.value != "" then
+        return x.value + "/noxy-editor"
+    end
+    return sys.getenv("HOME").value + "/.config/noxy-editor"
+end
+
+func path() -> string
+    return config_dir() + "/settings.json"
+end
+
+func load() -> Settings
+    let p: string = path()
+    if !io.exists(p) then
+        return default_settings()
+    end
+    let f: io.File = io.open(p, "r")
+    if !f.open then
+        return default_settings()
+    end
+    let r: io.IOResult = io.read(f)
+    io.close(f)
+    let s: Settings = default_settings()
+    if !r.ok || !json_loads(trim(r.data), ref s) then
+        eprint("settings.json invalido em " + p + "; usando o padrao")
+        return default_settings()
+    end
+    if !contains(THEMES, s.theme) then
+        s.theme = "dark"
+    end
+    return s
+end
+
+// save grava o arquivo, criando o diretorio; false se nao conseguiu.
+func save(s: Settings) -> bool
+    io.mkdir(config_dir())
+    let f: io.File = io.open(path(), "w")
+    if !f.open then
+        return false
+    end
+    io.write(f, json_dumps(s))
+    io.close(f)
+    return true
+end

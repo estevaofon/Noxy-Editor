@@ -1,32 +1,45 @@
-/* editor.css — tema escuro fixo (paleta Catppuccin Mocha). Cada kind de
-   token e uma classe .k-<kind>; .sel marca o trecho selecionado. */
-:root {
-  --bg: #1e1e2e;
-  --bg-side: #181825;
-  --bg-bar: #181825;
-  --bg-status: #11111b;
-  --bg-hover: #313244;
-  --fg: #cdd6f4;
-  --fg-dim: #6c7086;
-  --border: #313244;
-  --cur-line: #262637;
-  --sel: #45475a;
-  --accent: #89b4fa;
-  --cursor: #f5e0dc;
-  --danger: #f38ba8;
-  --k-keyword: #cba6f7;
-  --k-type: #f9e2af;
-  --k-ident: #cdd6f4;
-  --k-call: #89b4fa;
-  --k-number: #fab387;
-  --k-string: #a6e3a1;
-  --k-comment: #6c7086;
-  --k-operator: #94e2d5;
-  --k-punct: #9399b2;
-  --k-space: #cdd6f4;
+/* editor.css — temas como classes em html (theme-<id>), escolhidos pela
+   paleta e gravados no settings.json do Noxy. As mesmas variaveis em todos;
+   cada kind de token e uma classe .k-<kind>; .sel marca a selecao. */
+:root, html.theme-dark {
+  /* Catppuccin Mocha */
+  --bg: #1e1e2e; --bg-side: #181825; --bg-bar: #181825; --bg-status: #11111b; --bg-hover: #313244;
+  --fg: #cdd6f4; --fg-dim: #6c7086; --border: #313244; --cur-line: #262637; --sel: #45475a;
+  --accent: #89b4fa; --cursor: #f5e0dc; --danger: #f38ba8; --ok: #a6e3a1; --warn: #f9e2af;
+  --k-keyword: #cba6f7; --k-type: #f9e2af; --k-ident: #cdd6f4; --k-call: #89b4fa; --k-number: #fab387;
+  --k-string: #a6e3a1; --k-comment: #6c7086; --k-operator: #94e2d5; --k-punct: #9399b2; --k-space: #cdd6f4;
   --font-mono: ui-monospace, "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", monospace;
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
   --line-h: 22px;
+}
+html.theme-light {
+  /* Catppuccin Latte */
+  --bg: #eff1f5; --bg-side: #e6e9ef; --bg-bar: #e6e9ef; --bg-status: #dce0e8; --bg-hover: #ccd0da;
+  --fg: #4c4f69; --fg-dim: #8c8fa1; --border: #ccd0da; --cur-line: #e6e9ef; --sel: #bcc0cc;
+  --accent: #1e66f5; --cursor: #dc8a78; --danger: #d20f39; --ok: #40a02b; --warn: #df8e1d;
+  --k-keyword: #8839ef; --k-type: #df8e1d; --k-ident: #4c4f69; --k-call: #1e66f5; --k-number: #fe640b;
+  --k-string: #40a02b; --k-comment: #8c8fa1; --k-operator: #179299; --k-punct: #6c6f85; --k-space: #4c4f69;
+}
+html.theme-dracula {
+  --bg: #282a36; --bg-side: #21222c; --bg-bar: #21222c; --bg-status: #191a21; --bg-hover: #44475a;
+  --fg: #f8f8f2; --fg-dim: #6272a4; --border: #44475a; --cur-line: #2f313d; --sel: #44475a;
+  --accent: #bd93f9; --cursor: #f8f8f2; --danger: #ff5555; --ok: #50fa7b; --warn: #f1fa8c;
+  --k-keyword: #ff79c6; --k-type: #8be9fd; --k-ident: #f8f8f2; --k-call: #50fa7b; --k-number: #bd93f9;
+  --k-string: #f1fa8c; --k-comment: #6272a4; --k-operator: #ff79c6; --k-punct: #f8f8f2; --k-space: #f8f8f2;
+}
+html.theme-nord {
+  --bg: #2e3440; --bg-side: #292e39; --bg-bar: #292e39; --bg-status: #242933; --bg-hover: #3b4252;
+  --fg: #d8dee9; --fg-dim: #616e88; --border: #3b4252; --cur-line: #353b49; --sel: #434c5e;
+  --accent: #88c0d0; --cursor: #d8dee9; --danger: #bf616a; --ok: #a3be8c; --warn: #ebcb8b;
+  --k-keyword: #81a1c1; --k-type: #8fbcbb; --k-ident: #d8dee9; --k-call: #88c0d0; --k-number: #b48ead;
+  --k-string: #a3be8c; --k-comment: #616e88; --k-operator: #81a1c1; --k-punct: #eceff4; --k-space: #d8dee9;
+}
+html.theme-monokai {
+  --bg: #272822; --bg-side: #1e1f1c; --bg-bar: #1e1f1c; --bg-status: #171814; --bg-hover: #3e3d32;
+  --fg: #f8f8f2; --fg-dim: #75715e; --border: #3e3d32; --cur-line: #3e3d32; --sel: #49483e;
+  --accent: #66d9ef; --cursor: #f8f8f0; --danger: #f92672; --ok: #a6e22e; --warn: #e6db74;
+  --k-keyword: #f92672; --k-type: #66d9ef; --k-ident: #f8f8f2; --k-call: #a6e22e; --k-number: #ae81ff;
+  --k-string: #e6db74; --k-comment: #75715e; --k-operator: #f92672; --k-punct: #f8f8f2; --k-space: #f8f8f2;
 }
 
 * { box-sizing: border-box; }

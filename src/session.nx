@@ -7,6 +7,7 @@ use errors select Result, Failure
 use src.document as doc
 use src.editing as editing
 use src.runner as runner
+use src.settings as settings
 
 struct Tab
     editor: editing.Editor
@@ -56,6 +57,7 @@ struct Session
     page: string        // id da ultima pagina que mandou evento
     bye_page: string    // id da pagina que se despediu
     panel: Panel
+    settings: settings.Settings
 end
 
 // show_panel abre o painel numa aba; uma aba desconhecida e ignorada.
@@ -76,7 +78,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"))
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load())
 end
 
 func basename(path: string) -> string
