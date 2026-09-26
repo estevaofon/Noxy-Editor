@@ -13,6 +13,7 @@ use src.frame as frame
 use src.settings as settings
 use src.commands as commands
 use src.index as index
+use src.find as find
 
 
 struct Event
@@ -30,10 +31,11 @@ struct Event
     rows: int
     tree_version: int   // a versao da arvore que o cliente tem
     page: string        // id da pagina (por carga), para o bye de um reload
+    case_sensitive: bool   // da busca (case e palavra reservada)
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "")
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false)
 end
 
 // trivial: eventos que nao apagam a mensagem de status.
@@ -89,6 +91,19 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
         open_list(s, "palette")
     elif id == "quick_open" then
         open_list(s, "files")
+    elif id == "find" || id == "replace" then
+        if s.active >= 0 then
+            s.find.open = true
+            s.find.replace = id == "replace"
+            let ed: editing.Editor = s.tabs[s.active].editor
+            if editing.has_sel(ed) then
+                let r: doc.Range = editing.sel_range(ed)
+                if r.start.line == r.stop.line then
+                    s.find.query = doc.text_range(ed.doc, r.start, r.stop)
+                end
+            end
+            find.refresh(ref s.find, ed.doc, editing.sel_range(ed).start)
+        end
     elif id == "reindex" then
         session.start_index(s)
         s.message = "reindexando..."
@@ -105,6 +120,12 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
     else
         s.message = "comando desconhecido: " + id
     end
+end
+
+func close_find(s: ref session.Session) -> void
+    s.find.open = false
+    s.find.matches = []
+    s.find.current = -1
 end
 
 // refill_list recalcula os itens da lista pela consulta atual.
@@ -172,6 +193,26 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
     end
     if e.ctrl && e.key == "p" then
         run_command(s, "quick_open", now)
+        return
+    end
+    if e.ctrl && e.key == "f" then
+        run_command(s, "find", now)
+        return
+    end
+    if e.ctrl && e.key == "h" then
+        run_command(s, "replace", now)
+        return
+    end
+    if e.key == "f3" && s.active >= 0 then
+        if e.shift then
+            find.prev(ref s.tabs[s.active].editor, ref s.find, s.rows)
+        else
+            find.next(ref s.tabs[s.active].editor, ref s.find, s.rows)
+        end
+        return
+    end
+    if e.key == "escape" && s.find.open then
+        close_find(s)
         return
     end
     if e.ctrl && e.key == "`" then
@@ -320,6 +361,37 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         pick_list(ref s, e.index, now)
     elif e.kind == "list_close" then
         session.close_list(ref s)
+    elif e.kind == "find_open" then
+        if e.key == "replace" then
+            run_command(ref s, "replace", now)
+        else
+            run_command(ref s, "find", now)
+        end
+    elif e.kind == "find" then
+        s.find.query = e.text
+        s.find.case_sensitive = e.case_sensitive
+        if s.active >= 0 then
+            find.refresh(ref s.find, s.tabs[s.active].editor.doc, editing.sel_range(s.tabs[s.active].editor).start)
+            find.goto(ref s.tabs[s.active].editor, ref s.find, s.find.current, s.rows)
+        end
+    elif e.kind == "find_next" then
+        if s.active >= 0 then
+            find.next(ref s.tabs[s.active].editor, ref s.find, s.rows)
+        end
+    elif e.kind == "find_prev" then
+        if s.active >= 0 then
+            find.prev(ref s.tabs[s.active].editor, ref s.find, s.rows)
+        end
+    elif e.kind == "find_close" then
+        close_find(ref s)
+    elif e.kind == "replace_one" then
+        if s.active >= 0 then
+            find.replace_current(ref s.tabs[s.active].editor, ref s.find, e.text, s.rows, now)
+        end
+    elif e.kind == "replace_all" then
+        if s.active >= 0 then
+            find.replace_all(ref s.tabs[s.active].editor, ref s.find, e.text, s.rows, now)
+        end
     elif e.kind == "modal" then
         session.answer_modal(ref s, e.key)
     elif e.kind == "quit" then
@@ -336,6 +408,9 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         end
     elif e.kind != "init" && e.kind != "poll" then
         s.message = "evento desconhecido: " + e.kind
+    end
+    if s.find.open && s.active >= 0 && !trivial(e.kind) then
+        find.refresh(ref s.find, s.tabs[s.active].editor.doc, editing.sel_range(s.tabs[s.active].editor).start)
     end
     return s
 end

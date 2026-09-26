@@ -1,0 +1,143 @@
+// src/find.nx — busca e substituicao no arquivo ativo: ocorrencias literais
+// (sem regex), navegacao com volta, substituir a atual e todas. Opera sobre
+// um Editor; as marcas f (ocorrencia) e c (atual) vao no quadro por frame.nx.
+use strings select codes, to_lower
+use src.document as doc
+use src.editing as editing
+use src.history as history
+
+struct Find
+    open: bool
+    replace: bool        // a linha de substituir esta visivel
+    query: string
+    case_sensitive: bool
+    matches: doc.Pos[]   // inicio de cada ocorrencia, em ordem
+    current: int         // indice em matches; -1 sem ocorrencia
+end
+
+func new_find() -> Find
+    return Find(false, false, "", false, [], -1)
+end
+
+func fold(s: string, case_sensitive: bool) -> string
+    if case_sensitive then
+        return s
+    end
+    return to_lower(s)
+end
+
+// matches: ocorrencias literais por linha, sem sobreposicao.
+func matches(d: doc.Document, query: string, case_sensitive: bool) -> doc.Pos[]
+    let out: doc.Pos[] = []
+    if query == "" then
+        return out
+    end
+    let q: int[] = codes(fold(query, case_sensitive))
+    let n: int = length(q)
+    for i in range(length(d.lines)) do
+        let cs: int[] = codes(fold(d.lines[i], case_sensitive))
+        let j: int = 0
+        while j + n <= length(cs) do
+            let k: int = 0
+            while k < n && cs[j + k] == q[k] do
+                k = k + 1
+            end
+            if k == n then
+                append(ref out, doc.Pos(i, j))
+                j = j + n
+            else
+                j = j + 1
+            end
+        end
+    end
+    return out
+end
+
+// first_from: a primeira ocorrencia em ou depois de p; a primeira de todas
+// quando nenhuma; -1 sem ocorrencias.
+func first_from(ms: doc.Pos[], p: doc.Pos) -> int
+    if length(ms) == 0 then
+        return -1
+    end
+    for i in range(length(ms)) do
+        if !doc.before(ms[i], p) then
+            return i
+        end
+    end
+    return 0
+end
+
+// refresh recalcula as ocorrencias e a atual a partir de p (o inicio da
+// selecao: depois de um goto a atual continua a mesma).
+func refresh(f: ref Find, d: doc.Document, p: doc.Pos) -> void
+    f.matches = matches(d, f.query, f.case_sensitive)
+    f.current = first_from(f.matches, p)
+end
+
+// goto torna a ocorrencia i a atual e a seleciona.
+func goto(ed: ref editing.Editor, f: ref Find, i: int, rows: int) -> void
+    if i < 0 || i >= length(f.matches) then
+        return
+    end
+    f.current = i
+    let a: doc.Pos = f.matches[i]
+    editing.select_range(ed, a, doc.Pos(a.line, a.col + length(f.query)), rows)
+end
+
+func next(ed: ref editing.Editor, f: ref Find, rows: int) -> void
+    let n: int = length(f.matches)
+    if n == 0 then
+        return
+    end
+    goto(ed, f, (f.current + 1) % n, rows)
+end
+
+func prev(ed: ref editing.Editor, f: ref Find, rows: int) -> void
+    let n: int = length(f.matches)
+    if n == 0 then
+        return
+    end
+    goto(ed, f, (f.current - 1 + n) % n, rows)
+end
+
+// replace_current: se a selecao e a ocorrencia atual, substitui (um passo de
+// undo) e vai para a proxima; senao so seleciona a atual.
+func replace_current(ed: ref editing.Editor, f: ref Find, text: string, rows: int, now: int) -> void
+    if f.current < 0 || f.current >= length(f.matches) then
+        return
+    end
+    let m: doc.Pos = f.matches[f.current]
+    let r: doc.Range = editing.sel_range(*ed)
+    let on_match: bool = doc.same(r.start, m) && r.stop.line == m.line && r.stop.col == m.col + length(f.query)
+    if !editing.has_sel(*ed) || !on_match then
+        goto(ed, f, f.current, rows)
+        return
+    end
+    editing.paste(ed, text, rows, now)
+    refresh(f, ed.doc, ed.cursor)
+    if f.current >= 0 then
+        goto(ed, f, f.current, rows)
+    end
+end
+
+// replace_all substitui todas, de tras para a frente, num unico passo de undo.
+func replace_all(ed: ref editing.Editor, f: ref Find, text: string, rows: int, now: int) -> void
+    if length(f.matches) == 0 then
+        return
+    end
+    history.record(ref ed.history, editing.snapshot(*ed), "other", now)
+    let n: int = length(f.query)
+    let i: int = length(f.matches) - 1
+    while i >= 0 do
+        let m: doc.Pos = f.matches[i]
+        doc.delete_range(ref ed.doc, m, doc.Pos(m.line, m.col + n))
+        doc.insert(ref ed.doc, m, text)
+        i = i - 1
+    end
+    let last: doc.Pos = f.matches[length(f.matches) - 1]
+    ed.cursor = doc.clamp(ed.doc, doc.Pos(last.line, last.col + length(text)))
+    ed.anchor = ed.cursor
+    ed.goal_col = -1
+    editing.ensure_visible(ed, rows)
+    refresh(f, ed.doc, ed.cursor)
+end

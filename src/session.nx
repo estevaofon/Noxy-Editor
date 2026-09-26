@@ -9,6 +9,7 @@ use src.editing as editing
 use src.runner as runner
 use src.settings as settings
 use src.index as index
+use src.find as find
 
 struct Tab
     editor: editing.Editor
@@ -77,6 +78,7 @@ struct Session
     list: List
     files: string[]     // indice de caminhos relativos (Quick Open)
     files_task: any     // task de index.build em andamento; null parada
+    find: find.Find
 end
 
 // show_panel abre o painel numa aba; uma aba desconhecida e ignorada.
@@ -139,7 +141,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null)
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find())
 end
 
 func basename(path: string) -> string

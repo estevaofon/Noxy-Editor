@@ -8,11 +8,31 @@ use src.lexer as lexer
 use src.editing as editing
 use src.session as session
 use src.settings as settings
+use src.find as find
 
 struct SpanOut
     k: string       // kind do token
     t: string       // texto exato
     s: bool         // dentro da selecao
+    f: bool         // dentro de uma ocorrencia da busca
+    c: bool         // dentro da ocorrencia atual da busca
+end
+
+// Mark e um intervalo [a, b) de colunas numa linha com um papel: 0 selecao,
+// 1 ocorrencia da busca, 2 ocorrencia atual.
+struct Mark
+    a: int
+    b: int
+    kind: int
+end
+
+struct FindOut
+    open: bool
+    replace: bool
+    query: string
+    case_sensitive: bool
+    count: int
+    current: int
 end
 
 struct LineOut
@@ -67,54 +87,91 @@ struct Frame
     panel: session.Panel
     settings: settings.Settings
     list: session.List
+    find: FindOut
 end
 
-// cut_span corta um token que comeca na coluna col em ate tres pedacos na
-// fronteira [a, b) da selecao dentro da linha.
-func cut_span(kind: string, text: string, col: int, a: int, b: int) -> SpanOut[]
+// covered: o pedaco [p, q) esta dentro de alguma marca do papel kind?
+func covered(marks: Mark[], p: int, q: int, kind: int) -> bool
+    for m in marks do
+        if m.kind == kind && m.a <= p && q <= m.b then
+            return true
+        end
+    end
+    return false
+end
+
+// cut_span corta um token que comeca na coluna col em todas as fronteiras
+// das marcas da linha e da a cada pedaco as flags s, f e c.
+func cut_span(kind: string, text: string, col: int, marks: Mark[]) -> SpanOut[]
     let n: int = length(text)
-    let lo: int = a - col
-    let hi: int = b - col
-    if lo < 0 then
-        lo = 0
+    let cuts: int[] = [0, n]
+    for m in marks do
+        for x in [m.a - col, m.b - col] do
+            if x > 0 && x < n && !contains(cuts, x) then
+                append(ref cuts, x)
+            end
+        end
     end
-    if hi > n then
-        hi = n
-    end
-    if hi <= lo then
-        return [SpanOut(kind, text, false)]
+    for i in range(1, length(cuts)) do
+        let j: int = i
+        while j > 0 && cuts[j - 1] > cuts[j] do
+            let tmp: int = cuts[j - 1]
+            cuts[j - 1] = cuts[j]
+            cuts[j] = tmp
+            j = j - 1
+        end
     end
     let out: SpanOut[] = []
-    if lo > 0 then
-        append(ref out, SpanOut(kind, substring(text, 0, lo), false))
-    end
-    append(ref out, SpanOut(kind, substring(text, lo, hi), true))
-    if hi < n then
-        append(ref out, SpanOut(kind, substring(text, hi, n), false))
+    for i in range(1, length(cuts)) do
+        let p: int = cuts[i - 1]
+        let q: int = cuts[i]
+        append(ref out, SpanOut(kind, substring(text, p, q), covered(marks, col + p, col + q, 0), covered(marks, col + p, col + q, 1), covered(marks, col + p, col + q, 2)))
     end
     return out
 end
 
-func build_line(ed: editing.Editor, n: int) -> LineOut
-    let line: string = ed.doc.lines[n]
-    let a: int = 0
-    let b: int = 0
+// line_marks: a selecao e as ocorrencias da busca que tocam a linha n.
+func line_marks(ed: editing.Editor, f: find.Find, n: int) -> Mark[]
+    let marks: Mark[] = []
+    let line_len: int = length(ed.doc.lines[n])
     if editing.has_sel(ed) then
         let r: doc.Range = editing.sel_range(ed)
         if n >= r.start.line && n <= r.stop.line then
+            let a: int = 0
+            let b: int = line_len
             if n == r.start.line then
                 a = r.start.col
             end
-            b = length(line)
             if n == r.stop.line then
                 b = r.stop.col
             end
+            if b > a then
+                append(ref marks, Mark(a, b, 0))
+            end
         end
     end
+    if f.open && f.query != "" then
+        let qn: int = length(f.query)
+        for i in range(length(f.matches)) do
+            let m: doc.Pos = f.matches[i]
+            if m.line == n then
+                append(ref marks, Mark(m.col, m.col + qn, 1))
+                if i == f.current then
+                    append(ref marks, Mark(m.col, m.col + qn, 2))
+                end
+            end
+        end
+    end
+    return marks
+end
+
+func build_line(ed: editing.Editor, f: find.Find, n: int) -> LineOut
+    let line: string = ed.doc.lines[n]
+    let marks: Mark[] = line_marks(ed, f, n)
     let spans: SpanOut[] = []
     let col: int = 0
     for t in lexer.tokenize(line) do
-        for sp in cut_span(t.kind, t.text, col, a, b) do
+        for sp in cut_span(t.kind, t.text, col, marks) do
             append(ref spans, sp)
         end
         col = col + length(t.text)
@@ -122,7 +179,7 @@ func build_line(ed: editing.Editor, n: int) -> LineOut
     return LineOut(n, spans)
 end
 
-func build_view(ed: editing.Editor, rows: int) -> ViewOut
+func build_view(ed: editing.Editor, f: find.Find, rows: int) -> ViewOut
     let total: int = length(ed.doc.lines)
     let stop: int = ed.top + rows
     if stop > total then
@@ -130,7 +187,7 @@ func build_view(ed: editing.Editor, rows: int) -> ViewOut
     end
     let lines: LineOut[] = []
     for n in range(ed.top, stop) do
-        append(ref lines, build_line(ed, n))
+        append(ref lines, build_line(ed, f, n))
     end
     return ViewOut(ed.top, total, CursorOut(ed.cursor.line, ed.cursor.col), editing.has_sel(ed), lines)
 end
@@ -170,7 +227,7 @@ func build(s: ref session.Session, client_tree_version: int) -> string
     let eol: string = ""
     if s.active >= 0 then
         let ed: editing.Editor = s.tabs[s.active].editor
-        view = build_view(ed, s.rows)
+        view = build_view(ed, s.find, s.rows)
         let mark: string = ""
         if ed.doc.dirty then
             mark = " ●"
@@ -179,7 +236,7 @@ func build(s: ref session.Session, client_tree_version: int) -> string
         right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
         eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list)
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current))
     s.clipboard = ""
     return json_dumps(f)
 end

@@ -310,6 +310,14 @@ func click(ed: ref Editor, p: doc.Pos, shift: bool, rows: int) -> void
     place(ed, p, shift, rows)
 end
 
+// select_range seleciona de a ate b (cursor em b) e rola ate ele.
+func select_range(ed: ref Editor, a: doc.Pos, b: doc.Pos, rows: int) -> void
+    ed.goal_col = -1
+    ed.anchor = doc.clamp(ed.doc, a)
+    ed.cursor = doc.clamp(ed.doc, b)
+    ensure_visible(ed, rows)
+end
+
 // drag move so o cursor; a ancora fica onde o clique comecou.
 func drag(ed: ref Editor, p: doc.Pos, rows: int) -> void
     ed.goal_col = -1

@@ -74,7 +74,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 #editor { position: relative; display: flex; min-height: 0; overflow-x: auto; overflow-y: hidden; font: 14px var(--font-mono); }
 #gutter { position: sticky; left: 0; z-index: 2; flex: none; width: 56px; padding-right: 12px; text-align: right; color: var(--fg-dim); background: var(--bg); user-select: none; }
-#text { position: relative; flex: 1; min-width: max-content; }
+#text { position: relative; flex: 1; min-width: max-content; padding-right: 48px; }
 .line, .gline { height: var(--line-h); line-height: var(--line-h); white-space: pre; tab-size: 4; }
 .line { padding-left: 4px; }
 .line.cur, .gline.cur { background: var(--cur-line); }
@@ -82,6 +82,19 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #cursor { position: absolute; width: 2px; height: var(--line-h); background: var(--cursor); pointer-events: none; z-index: 3; animation: blink 1s steps(2, start) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .sel { background: var(--sel); }
+.f { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.c { background: var(--warn); color: var(--bg); }
+
+/* barra de busca no arquivo, sobre o canto superior direito do editor */
+#findbar { position: absolute; top: 4px; right: 20px; z-index: 4; background: var(--bg-side); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, .3); padding: 6px; font: 13px var(--font-ui); }
+.find-row { display: flex; align-items: center; gap: 6px; }
+.find-row + .find-row { margin-top: 6px; }
+.find-row input { width: 240px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); outline: none; }
+.find-row input:focus { border-color: var(--accent); }
+.find-row button { padding: 3px 7px; border-radius: 4px; color: var(--fg-dim); }
+.find-row button:hover { background: var(--bg-hover); color: var(--fg); }
+.find-row button.on { background: var(--bg-hover); color: var(--accent); }
+#find-count { min-width: 90px; color: var(--fg-dim); font-size: 12px; }
 #welcome { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font: 14px var(--font-ui); }
 
 .k-keyword { color: var(--k-keyword); }

@@ -15,6 +15,8 @@
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     list: $("list"), listInput: $("list-input"), listItems: $("list-items"),
+    findbar: $("findbar"), findInput: $("find-input"), findCase: $("find-case"), findCount: $("find-count"), findPrev: $("find-prev"), findNext: $("find-next"), findClose: $("find-close"),
+    findReplaceRow: $("find-replace-row"), findReplace: $("find-replace"), findOne: $("find-one"), findAll: $("find-all"),
     input: $("input"),
   };
   const LINE_H = 22;
@@ -111,6 +113,7 @@
     renderPanel(f.panel);
     renderModal(f.modal);
     renderList(f.list);
+    renderFind(f.find);
     if (f.clipboard) {
       internalClip = f.clipboard;
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(f.clipboard).catch(() => {});
@@ -166,7 +169,7 @@
       const cur = line.n === v.cursor.line;
       const div = el("div", "line" + (cur ? " cur" : ""));
       div.dataset.n = line.n;
-      for (const sp of line.spans) div.append(el("span", "k-" + sp.k + (sp.s ? " sel" : ""), sp.t));
+      for (const sp of line.spans) div.append(el("span", "k-" + sp.k + (sp.s ? " sel" : "") + (sp.f ? " f" : "") + (sp.c ? " c" : ""), sp.t));
       lines.push(div);
       nums.push(el("div", "gline" + (cur ? " cur" : ""), String(line.n + 1)));
     }
@@ -212,7 +215,10 @@
     const box = els.editor.getBoundingClientRect();
     const gutterW = els.gutter.getBoundingClientRect().width;
     const margin = 24;
-    if (x < box.left + gutterW + margin) {
+    const contentX = x - box.left + els.editor.scrollLeft;   // posicao com a vista no inicio
+    if (contentX + 2 <= box.width - margin) {
+      els.editor.scrollLeft = 0;   // cabe sem rolar: volta ao inicio
+    } else if (x < box.left + gutterW + margin) {
       els.editor.scrollLeft = Math.max(0, els.editor.scrollLeft - (box.left + gutterW + margin - x));
     } else if (x + 2 > box.right - margin) {
       els.editor.scrollLeft += (x + 2) - (box.right - margin);
@@ -222,12 +228,53 @@
     els.cursor.style.animation = "";
   }
 
+  // renderFind: a barra de busca; a consulta e a flag Aa vivem no Noxy, o
+  // campo de texto e do cliente e manda `find` a cada tecla
+  let findOpen = false, findReplace = false, caseSensitive = false;
+  function renderFind(f) {
+    if (!f.open) {
+      if (findOpen) { findOpen = false; findReplace = false; els.findInput.blur(); els.findReplace.blur(); els.findbar.classList.add("hidden"); focusInput(); }
+      return;
+    }
+    if (!findOpen) {
+      findOpen = true;
+      els.findInput.value = f.query;
+      els.findbar.classList.remove("hidden");
+      els.findInput.focus(); els.findInput.select();
+    }
+    if (f.replace !== findReplace) {
+      findReplace = f.replace;
+      els.findReplaceRow.classList.toggle("hidden", !f.replace);
+      if (f.replace) els.findReplace.focus();
+    }
+    caseSensitive = f.case_sensitive;
+    els.findCase.classList.toggle("on", f.case_sensitive);
+    els.findCount.textContent = f.count > 0 ? (f.current + 1) + " de " + f.count : (f.query ? "sem resultados" : "");
+  }
+  function sendFind() { send({ kind: "find", text: els.findInput.value, case_sensitive: caseSensitive }); }
+  els.findInput.addEventListener("input", sendFind);
+  els.findCase.addEventListener("mousedown", (e) => { e.preventDefault(); caseSensitive = !caseSensitive; sendFind(); });
+  els.findPrev.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "find_prev" }); });
+  els.findNext.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "find_next" }); });
+  els.findClose.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "find_close" }); });
+  els.findOne.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "replace_one", text: els.findReplace.value }); });
+  els.findAll.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "replace_all", text: els.findReplace.value }); });
+  for (const input of [els.findInput, els.findReplace]) {
+    input.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() !== "a" && e.key.toLowerCase() !== "c" && e.key.toLowerCase() !== "v" && e.key.toLowerCase() !== "x" && e.key.toLowerCase() !== "z") { onKeyDown(e); e.stopPropagation(); return; }
+      if (e.key === "Enter") { e.preventDefault(); if (input === els.findReplace) send({ kind: "replace_one", text: els.findReplace.value }); else send({ kind: e.shiftKey ? "find_prev" : "find_next" }); }
+      else if (e.key === "Escape") { e.preventDefault(); send({ kind: "find_close" }); }
+      else if (e.key === "F3") { e.preventDefault(); send({ kind: e.shiftKey ? "find_prev" : "find_next" }); }
+      e.stopPropagation();
+    });
+  }
+
   // renderList: a lista (paleta ou arquivos) vem inteira do quadro; o campo
   // de texto e do cliente e manda list_filter a cada tecla
   let listKind = "";
   function renderList(l) {
     if (!l.kind) {
-      if (listKind) { els.list.classList.add("hidden"); listKind = ""; focusInput(); }
+      if (listKind) { els.listInput.blur(); els.list.classList.add("hidden"); listKind = ""; focusInput(); }
       return;
     }
     if (l.kind !== listKind) {
@@ -270,10 +317,10 @@
   // ---- teclado: teclas de navegacao e combinacoes viram key; caracteres
   // chegam pelo textarea (input / compositionend), o que faz acentos e IME
   // funcionarem.
-  const NAV = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1, Tab: 1, Escape: 1, F5: 1 };
-  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, p: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
+  const NAV = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1, Tab: 1, Escape: 1, F5: 1, F3: 1 };
+  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, p: 1, f: 1, h: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
 
-  els.input.addEventListener("keydown", (e) => {
+  function onKeyDown(e) {
     if (e.isComposing) return;
     const key = e.key.toLowerCase();
     if (e.ctrlKey || e.metaKey) {
@@ -284,7 +331,8 @@
       return;
     }
     if (NAV[e.key]) { e.preventDefault(); send({ kind: "key", key, ctrl: false, shift: e.shiftKey, alt: e.altKey }); }
-  });
+  }
+  els.input.addEventListener("keydown", onKeyDown);
   function flushTyped() {
     const t = els.input.value;
     els.input.value = "";
@@ -303,6 +351,8 @@
   });
   function focusInput() {
     if (listKind) return;   // a lista tem o foco
+    const a = document.activeElement;
+    if (a && a.closest && a.closest("#findbar")) return;   // a barra de busca tem o foco
     if (document.activeElement !== els.input) els.input.focus({ preventScroll: true });
   }
   document.addEventListener("mousedown", () => setTimeout(focusInput, 0));
