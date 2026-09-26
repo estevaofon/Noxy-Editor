@@ -459,7 +459,7 @@ func test_frame() -> void
         append(ref big, "let v" + to_str(i) + ": int = " + to_str(i) + " // linha")
     end
     let bs: session.Session = session.new_session(root)
-    append(ref bs.tabs, session.Tab(editing.new_editor(doc.Document(root + "/big.nx", big, false))))
+    append(ref bs.tabs, session.Tab(editing.new_editor(doc.Document(root + "/big.nx", big, false, "\n"))))
     bs.active = 0
     bs.rows = 50
     editing.move_doc_end(ref bs.tabs[0].editor, false, 50)

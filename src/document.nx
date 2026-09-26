@@ -1,7 +1,7 @@
 // src/document.nx — o documento: linhas de texto e posicoes em code points.
 // Nao conhece cursor, tela nem arquivo. Toda operacao que muda texto marca
 // dirty. Posicoes usam a mesma unidade de substring e codes.
-use strings select substring, split, join_count, replace
+use strings select substring, split, join_count, replace, contains
 
 struct Pos
     line: int       // 0-based
@@ -17,19 +17,33 @@ struct Document
     path: string    // absoluto; "" para um buffer sem arquivo
     lines: string[] // nunca vazio: um documento vazio tem uma linha ""
     dirty: bool
+    eol: string     // "\n" ou "\r\n": a quebra que o arquivo tinha, gravada de volta
 end
 
+// from_text divide em linhas; a quebra do arquivo (LF ou CRLF) fica em eol.
 func from_text(path: string, text: string) -> Document
+    let eol: string = "\n"
+    if contains(text, "\r\n") then
+        eol = "\r\n"
+    end
     let clean: string = replace(replace(text, "\r\n", "\n"), "\r", "\n")
     let parts: string[] = split(clean, "\n").parts
     if length(parts) == 0 then
         parts = [""]
     end
-    return Document(path, parts, false)
+    return Document(path, parts, false, eol)
 end
 
 func to_text(d: Document) -> string
-    return join_count(d.lines, "\n", length(d.lines))
+    return join_count(d.lines, d.eol, length(d.lines))
+end
+
+// eol_name e o que a barra de status mostra.
+func eol_name(d: Document) -> string
+    if d.eol == "\r\n" then
+        return "CRLF"
+    end
+    return "LF"
 end
 
 func line_count(d: Document) -> int

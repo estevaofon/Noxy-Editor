@@ -43,6 +43,7 @@ struct StatusOut
     left: string
     right: string
     message: string
+    eol: string     // "LF" ou "CRLF"; "" sem aba
 end
 
 struct OutputOut
@@ -162,6 +163,7 @@ func build(s: ref session.Session, client_tree_version: int) -> string
     let title: string = title_of(s)
     let left: string = ""
     let right: string = ""
+    let eol: string = ""
     if s.active >= 0 then
         let ed: editing.Editor = s.tabs[s.active].editor
         view = build_view(ed, s.rows)
@@ -170,9 +172,10 @@ func build(s: ref session.Session, client_tree_version: int) -> string
             mark = " ●"
         end
         left = session.relative(s.root, ed.doc.path) + mark
-        right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   UTF-8"
+        right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
+        eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal)
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal)
     s.clipboard = ""
     return json_dumps(f)
 end
