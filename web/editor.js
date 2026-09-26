@@ -155,13 +155,14 @@
       lines.push(div);
       nums.push(el("div", "gline" + (cur ? " cur" : ""), String(line.n + 1)));
     }
-    els.text.replaceChildren(...lines);
+    els.text.replaceChildren(...lines, els.cursor);   // o cursor vive dentro de #text: mesmas coordenadas, mesmo scroll
     els.gutter.replaceChildren(...nums);
     placeCursor(v);
   }
 
   // placeCursor usa um Range no texto da linha: fica exato com tabs,
-  // caracteres largos e qualquer fonte.
+  // caracteres largos e qualquer fonte. Depois rola a vista na horizontal
+  // para o cursor continuar visivel (a vertical e do Noxy).
   function placeCursor(v) {
     const lineEl = els.text.querySelector(`.line[data-n="${v.cursor.line}"]`);
     if (!lineEl) { els.cursor.classList.add("hidden"); return; }
@@ -193,6 +194,14 @@
     els.cursor.style.left = (x - textRect.left) + "px";
     els.cursor.style.top = (lineRect.top - textRect.top) + "px";
     els.cursor.classList.remove("hidden");
+    const box = els.editor.getBoundingClientRect();
+    const gutterW = els.gutter.getBoundingClientRect().width;
+    const margin = 24;
+    if (x < box.left + gutterW + margin) {
+      els.editor.scrollLeft = Math.max(0, els.editor.scrollLeft - (box.left + gutterW + margin - x));
+    } else if (x + 2 > box.right - margin) {
+      els.editor.scrollLeft += (x + 2) - (box.right - margin);
+    }
     els.cursor.style.animation = "none";
     void els.cursor.offsetWidth;
     els.cursor.style.animation = "";

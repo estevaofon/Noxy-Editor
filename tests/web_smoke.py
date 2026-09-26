@@ -44,6 +44,36 @@ def key(k, text=None, mods=0, code=None):
     settle()
 def insert(text):
     ws.call("Input.insertText", {"text": text}); settle()
+# cursor_diff: distancia entre a barra do cursor e o caret real na coluna
+# que a barra de status mostra, calculado por um Range independente do
+# cliente; zero quando o cursor esta desenhado no lugar certo.
+def cursor_diff():
+    return ev("""(() => {
+      const lineEl = document.querySelector('.line.cur');
+      const st = document.getElementById('status-right').textContent.match(/Ln (\\d+), Col (\\d+)/);
+      const col = parseInt(st[2], 10) - 1;
+      let remaining = col, x = null, last = null, node;
+      const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+      while ((node = walker.nextNode())) {
+        const len = Array.from(node.data).length;
+        if (remaining <= len) {
+          let i = 0, n = 0;
+          while (n < remaining) { i += node.data.codePointAt(i) > 0xffff ? 2 : 1; n++; }
+          const r = document.createRange(); r.setStart(node, i); r.collapse(true);
+          x = r.getBoundingClientRect().left; break;
+        }
+        remaining -= len; last = node;
+      }
+      if (x === null) {
+        if (!last) return document.getElementById('cursor').getBoundingClientRect().left - (lineEl.getBoundingClientRect().left + 4);
+        const r = document.createRange(); r.setStart(last, last.data.length); r.collapse(true);
+        x = r.getBoundingClientRect().left;
+      }
+      return document.getElementById('cursor').getBoundingClientRect().left - x;
+    })()""")
+def cursor_in_view():
+    return ev("""(() => { const c = document.getElementById('cursor').getBoundingClientRect(); const b = document.getElementById('editor').getBoundingClientRect(); return c.left >= b.left + 56 && c.right <= b.right; })()""")
+
 def mouse(kind, x, y, button="left", clicks=1, mods=0):
     ws.call("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": button, "clickCount": clicks, "modifiers": mods})
 
@@ -74,6 +104,8 @@ check("ctrl+z desfaz a digitacao", ev("document.querySelector('.line[data-n=\"0\
 rect = ev("(() => { const r = document.querySelector('.line[data-n=\"2\"] .k-call').getBoundingClientRect(); return [r.left, r.top, r.height]; })()")
 mouse("mousePressed", rect[0] + 1, rect[1] + rect[2] / 2); mouse("mouseReleased", rect[0] + 1, rect[1] + rect[2] / 2); settle()
 check("clique posiciona o cursor", "Ln 3, Col 6" in ev("document.getElementById('status-right').textContent"))
+d = cursor_diff()
+check("cursor desenhado na coluna do status (diferenca %.1f px)" % d, abs(d) < 1.5)
 # shift+End seleciona ate o fim
 key("End", mods=8)
 check("shift+end seleciona", ev("document.querySelectorAll('.line[data-n=\"2\"] .sel').length") > 0)
@@ -106,6 +138,12 @@ ev("document.querySelector('.tab .close').dispatchEvent(new MouseEvent('mousedow
 check("fechar aba suja abre modal", not ev("document.getElementById('modal').classList.contains('hidden')"))
 ev("document.querySelectorAll('#modal-buttons button')[2].click()"); settle()
 check("cancelar fecha o modal", ev("document.getElementById('modal').classList.contains('hidden')"))
+# linha longa: a vista rola para acompanhar o cursor
+key("End"); insert("x" * 300)
+check("linha longa: a vista rola horizontalmente", ev("document.getElementById('editor').scrollLeft") > 0 and cursor_in_view())
+key("Home")
+check("home volta a vista ao inicio", ev("document.getElementById('editor').scrollLeft") == 0 and cursor_in_view())
+key("z", mods=2)
 # screenshot
 shot = ws.call("Page.captureScreenshot", {"format": "png"})["data"]
 open(os.path.join("tests", "tmp", "web_screenshot.png"), "wb").write(base64.b64decode(shot))
