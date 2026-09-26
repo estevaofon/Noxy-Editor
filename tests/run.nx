@@ -423,9 +423,9 @@ func test_runner() -> void
     run_until(ref bad)
     check("arquivo inexistente mostra o erro do noxy", strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
     if platform.windows() then
-        check("comando do Windows: cd /D, aspas duplas e barras invertidas", runner.command("C:/x y", "sub/a.nx") == "cd /D \"C:\\x y\" && noxy \"sub\\a.nx\"")
+        check("comando do Windows: cd /D, aspas duplas e barras invertidas", runner.command("C:/x y", "sub/a.nx") == "cd /D \"C:\\x y\" && set NOXY_INTERPRETER=1&& \"" + platform.backslashes(runner.noxy_exe()) + "\" \"sub\\a.nx\"")
     else
-        check("caminho com aspas simples", runner.command("/x y", "a'b.nx") == "cd '/x y' && exec noxy 'a'\\''b.nx'")
+        check("caminho com aspas simples", runner.command("/x y", "a'b.nx") == "cd '/x y' && NOXY_INTERPRETER=1 exec " + platform.shell_quote(runner.noxy_exe()) + " 'a'\\''b.nx'")
     end
     check("parse_pid aceita so um numero", runner.parse_pid(" 4242\n") == 4242 && runner.parse_pid("") == 0 && runner.parse_pid("erro: x") == 0)
 end
@@ -785,10 +785,10 @@ func test_platform() -> void
     let a: string = platform.arg("NOXY_EDITOR_TEST_ARG", "a b")
     if platform.windows() then
         check("arg no Windows: valor entre aspas numa variavel de ambiente, %NOME% no comando", a == "%NOXY_EDITOR_TEST_ARG%" && sys.getenv("NOXY_EDITOR_TEST_ARG").value == "\"a b\"")
-        check("o cmd expande a variavel com as aspas intactas", sys.exec_output("echo " + a).output == "\"a b\"")
+        check("o cmd expande a variavel com as aspas intactas", strings.trim(sys.exec_output("echo " + a).output) == "\"a b\"")
     else
         check("arg no Unix: aspas simples", a == "'a b'")
-        check("o sh recebe o valor inteiro", sys.exec_output("echo " + a).output == "a b")
+        check("o sh recebe o valor inteiro", strings.trim(sys.exec_output("echo " + a).output) == "a b")
     end
 end
 

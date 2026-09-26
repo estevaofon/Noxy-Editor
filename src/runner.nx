@@ -30,14 +30,29 @@ func new_run() -> RunState
     return RunState(false, "", 0, "", "", 0, io.File(-1, "", "", false), b"", false, 0)
 end
 
-// command e o que roda: cd na raiz e noxy no arquivo, na sintaxe do shell da
-// plataforma. No Windows as aspas sao seguras aqui porque a linha inteira vai
-// por variavel de ambiente (launch_windows), nao pelo comando do sys.exec.
+// noxy_exe: o interpretador que roda este editor — o noxy, ou o proprio
+// noxy-editor gerado por `noxy build` (docs/BUILD.md do noxy). "" (o
+// sistema nao soube dizer) cai no `noxy` do PATH.
+func noxy_exe() -> string
+    let exe: string = sys.executable()
+    if exe == "" then
+        return "noxy"
+    end
+    return exe
+end
+
+// command e o que roda: cd na raiz e o interpretador no arquivo, na sintaxe
+// do shell da plataforma, com NOXY_INTERPRETER=1 SO no ambiente do filho
+// (`VAR=1 exec` no sh; `set` dentro do cmd oculto no Windows) — num
+// noxy-editor autocontido a variavel faz o binario rodar como noxy comum, e
+// ela e herdada, entao nunca vai no ambiente do editor. No Windows as aspas
+// sao seguras aqui porque a linha inteira vai por variavel de ambiente
+// (launch_windows), nao pelo comando do sys.exec.
 func command(root: string, rel: string) -> string
     if platform.windows() then
-        return "cd /D \"" + platform.backslashes(root) + "\" && noxy \"" + platform.backslashes(rel) + "\""
+        return "cd /D \"" + platform.backslashes(root) + "\" && set NOXY_INTERPRETER=1&& \"" + platform.backslashes(noxy_exe()) + "\" \"" + platform.backslashes(rel) + "\""
     end
-    return "cd " + platform.shell_quote(root) + " && exec noxy " + platform.shell_quote(rel)
+    return "cd " + platform.shell_quote(root) + " && NOXY_INTERPRETER=1 exec " + platform.shell_quote(noxy_exe()) + " " + platform.shell_quote(rel)
 end
 
 // parse_pid le o PID que o lancador imprimiu; 0 se nao veio um numero.

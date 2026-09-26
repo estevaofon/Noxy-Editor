@@ -4,6 +4,8 @@ noxy_libs/
 # Binários e artefatos
 bin/
 dist/
+/noxy-editor
+/noxy-editor.exe
 
 # Temporários dos testes
 tests/tmp/
