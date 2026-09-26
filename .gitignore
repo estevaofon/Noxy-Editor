@@ -1,0 +1,18 @@
+# Dependências resolvidas a partir de noxy.mod / noxy.sum
+noxy_libs/
+
+# Binários e artefatos
+bin/
+dist/
+
+# Temporários dos testes
+tests/tmp/
+__pycache__/
+
+# Sistema / editores
+.DS_Store
+.vscode/
+.idea/
+
+# Workspace dos scripts de execução do plano
+.superpowers/

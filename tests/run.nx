@@ -1,0 +1,26 @@
+// tests/run.nx — suite do editor. Roda sem navegador:
+//     noxy tests/run.nx      (a partir da raiz do projeto)
+use sys
+
+let fails = 0
+let total = 0
+
+func check(name: string, cond: bool) -> void
+    total = total + 1
+    if cond then
+        print(f"  ok   {name}")
+    else
+        print(f"FAIL   {name}")
+        fails = fails + 1
+    end
+end
+
+func report() -> void
+    print("")
+    print(f"{total - fails}/{total} passaram")
+    if fails > 0 then
+        sys.exit(1)
+    end
+end
+
+report()
