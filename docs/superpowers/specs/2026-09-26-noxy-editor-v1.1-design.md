@@ -42,6 +42,10 @@ Sondados nesta máquina antes de escrever.
 | `spawn_task` + `task_await(t, 0)` (v1) | Busca na pasta, índice de arquivos e `git status` rodam em tasks e são recolhidos a cada evento |
 | xterm.js 6.0.0 e `@xterm/addon-fit` 0.11.0, MIT; `creack/pty` v1.1.24 | Versões fixadas em `web/vendor/` e no `go.mod` da extensão |
 | Sem binário da extensão a VM recusa o `use` (achado 7) | `noxy_pty` publica binário Windows que responde "indisponível" em vez de faltar |
+| `time_now()` devolve **segundos**, não ms (achado 8); `time.now_ms()` existe | O relógio do dono é `events.now()` sobre `time.now_ms()`; o agrupamento do undo da v1 durava 1000 s |
+| `sys.exec_output` apara espaços nas pontas da saída (achado 9) | Saída posicional (porcelain do git) ganha uma linha `#` na frente |
+| O `sh` do Ubuntu é o dash, cujo `kill` não aceita `--` | Parar usa `kill -TERM -PGID` |
+| `base64_encode` e `base64_decode` são builtins | Os dados do terminal cruzam em base64 sem módulo novo |
 
 ## 3. Arquitetura
 
@@ -106,11 +110,12 @@ definido). Para cada aba suja, um arquivo `<sha256 do caminho>.json`:
 {"path": "/abs/x.nx", "text": "...", "eol": "\n", "saved_at": 1727300000000}
 ```
 
-- `Editor` ganha `edits: int` (incrementa em toda mudança de texto, inclusive
-  undo) e `recovered_edits: int` (o `edits` da última cópia gravada).
-- No fim de todo evento não trivial, o dono percorre as abas: suja com
-  `edits != recovered_edits` e última gravação há mais de 1000 ms grava a
-  cópia. No `bye`, grava todas sem esperar.
+- Cada `Tab` guarda `copy_text` (o texto da última cópia gravada) e
+  `copy_at` (quando). No fim de todo evento, o dono percorre as abas sujas:
+  texto diferente de `copy_text` e (primeira cópia ou última há 1000 ms ou
+  mais) grava a cópia. No `bye`, grava sem esperar. Comparar o texto, em vez
+  de um contador de edições no `Editor`, evita tocar em cada operação de
+  `editing.nx`; o custo é juntar as linhas das abas sujas a cada evento.
 - O cliente, 1500 ms depois da última edição sem outro evento, manda um
   `poll`, para a gravação pendente acontecer com o usuário parado.
 - `save` bem-sucedido apaga a cópia da aba. Fechar aba com "Não salvar"
@@ -141,15 +146,21 @@ setsid sh -c '(cd <raiz> && exec noxy <relativo>) > <dir>/out 2>&1 < /dev/null; 
 echo $! > <dir>/pid
 ```
 
-(`sys.exec` da linha inteira; `$!` é o PID do `setsid`, que é o líder do
-grupo.) A task fica em `sys.exec_output("while [ ! -f code ]; do sleep 0.1; done")`
-só para o dono saber que terminou.
+(`sys.exec_output` da linha inteira; `$!` é o PID do `setsid`, que é o
+líder do grupo. A saída usa `>>` sobre um `out` criado antes, para o handle
+de leitura aberto continuar válido.) Não há task: o fim é o arquivo `code`.
 
 - `runner.poll(ref r)`: lê do handle aberto de `out` o que foi acrescentado e
   anexa a `text`; quando `code` existe, anexa `[saiu com N]`, fecha, apaga o
   diretório e marca parado. `version` muda a cada anexo.
-- `runner.stop(ref r)`: `kill -TERM -- -<pid>`; 2 s depois, se `code` ainda
-  não existe, `kill -KILL`. O painel mostra `[interrompido]`.
+- `runner.stop(ref r, now)`: `kill -TERM -<pid>` (sem `--`, que o dash
+  recusa). Enquanto para, cada `poll` confere o grupo (`kill -0 -<pid>`):
+  morto, termina com `[interrompido]` (o shell do grupo morre antes de gravar
+  `code`); vivo 2 s depois, `kill -KILL -<pid>`.
+- `session.shutdown` (fim do editor) fecha o terminal e para a execução, para
+  nada ficar rodando depois da janela fechar.
+- A saída é lida como bytes; até 3 bytes finais que ainda não fecham um
+  caractere UTF-8 esperam a próxima leitura.
 - O painel Saída ganha o botão **Parar** (visível enquanto roda); Ctrl+F5
   faz o mesmo. F5 durante uma execução continua respondendo "já está
   rodando".
@@ -283,8 +294,12 @@ struct GitInfo
 end
 ```
 
-`gitinfo.refresh` dispara uma task com `git -C <raiz> rev-parse --abbrev-ref HEAD`
-e `git -C <raiz> status --porcelain --untracked-files=all`; `poll` recolhe.
+`session.start_git` dispara uma task com `gitinfo.collect`: `git -C <raiz>
+rev-parse --abbrev-ref HEAD`, `--show-prefix` (a raiz aberta pode ser uma
+subpasta do repositório: só entra o que está sob ela) e `echo '#'; git status
+--porcelain --untracked-files=all` (a linha `#` protege o espaço inicial do
+porcelain do corte do `exec_output`). O status vai indexado por caminho
+absoluto, que é o que a árvore e as abas carregam; `poll` recolhe.
 Disparado na partida, depois de cada `save`, ao fim de uma execução e pelo
 comando "Git: atualizar". `Node` e `TabOut` ganham `git: string`; a status
 mostra a branch à direita. Cores: modificado em âmbar, novo ou não rastreado
@@ -295,10 +310,11 @@ fora de um repositório, nada aparece e nenhuma mensagem é mostrada.
 
 `minimap.shape(d) -> int[]`: para cada linha, dois inteiros, o comprimento
 (máximo 120) e o índice do kind do primeiro token não espaço (0 = vazio).
-O quadro leva `minimap { version, lines }` só quando o cliente manda
-`want_minimap = true`, o que ele faz quando `minimap_version` do quadro
-anterior difere da que tem, no máximo a cada 300 ms. `version` é `edits` da
-aba mais um contador de troca de aba. O cliente desenha num canvas de 90 px
+O quadro leva `minimap { path, lines }` só quando o evento tem
+`want_minimap = true`; senão `path` vazio e `lines` vazio. O cliente pede
+quando a aba ativa muda e, depois de uma edição, no máximo a cada 300 ms. O
+Noxy não guarda versão do documento; o retângulo da área visível sai de
+`view.top` e `view.total`, que todo quadro traz. O cliente desenha num canvas de 90 px
 à direita do editor, 2 px por linha, cor por kind com opacidade, e a janela
 visível como um retângulo translúcido; clicar ou arrastar manda
 `minimap_goto` (line) que ajusta `top`.
@@ -342,8 +358,9 @@ capabilities = ["process"]
 
 ### 12.2 Servidor e sessão
 
-`term.nx` guarda `Term { open: bool, id: int, exited: bool, cols, rows }` na
-sessão. Eventos pelo dono: `term_open` (abre com `cols`/`rows` do cliente e
+`term.nx` guarda `Term { open, id, error, cols, rows }` na sessão, e a
+global de módulo `term.current_id` (escrita pelo dono, lida pelas rotas) diz
+qual terminal as rotas aceitam. Eventos pelo dono: `term_open` (abre com `cols`/`rows` do cliente e
 `cwd = raiz`), `term_close`, `term_resize` (cols, rows). Dados fora do dono:
 
 | Rota | Efeito |
@@ -363,16 +380,18 @@ com `LICENSE` ao lado), servidos por `GET /vendor/<arquivo>` (lista fixa). A
 aba Terminal hospeda um `Terminal` do xterm com o tema atual; `fit` calcula
 `cols`/`rows` e manda `term_resize` quando o painel muda de tamanho. Enquanto
 `term.open`, um long-poll contínuo em `/term/read` escreve no xterm;
-`onData` do xterm manda `/term/write`. O foco: abrir a aba foca o xterm;
-Escape (com o xterm focado) e clique no editor devolvem o foco ao editor;
-Ctrl+` foca de volta. Quando termina, o xterm mostra `[terminal encerrado —
+`onData` do xterm manda `/term/write`. O foco: Ctrl+` e o clique na aba
+focam o xterm; Ctrl+` com o xterm focado, ou um clique no editor, devolvem o
+foco ao editor. Escape vai para o shell: o `vim`, que os critérios de sucesso
+exigem, precisa dele. Esconder a aba para o desenho do xterm; ao voltar, ele
+é redesenhado inteiro. Quando termina, o xterm mostra `[terminal encerrado —
 Enter para abrir outro]`. Um terminal por vez.
 
 ## 13. Eventos e quadro (o que muda)
 
 Campos novos em `Event`: `cols: int`, `want_minimap: bool`,
-`minimap_version: int`, `git_version: int`, `case_sensitive: bool` (`case`
-é palavra reservada em Noxy).
+`git_version: int`, `search_version: int`, `case_sensitive: bool` (`case` é
+palavra reservada em Noxy).
 
 | kind | campos | efeito |
 |---|---|---|
@@ -395,10 +414,12 @@ Campos novos em `Event`: `cols: int`, `want_minimap: bool`,
 | `term_open`, `term_close` | cols, rows | |
 | `term_resize` | cols, rows | |
 
-Campos novos no quadro: `panel`, `find`, `search`, `list`, `settings`,
-`git` (só quando `git_version` difere), `minimap` (só quando pedido),
-`term`, `run.stoppable`, `status.eol`; `tabs[].git`, `tree[].git`; spans com
-`f` e `c`.
+Campos novos no quadro: `panel`, `find`, `search` (os resultados só quando
+`search_version` difere), `list`, `settings`, `git` (status e pastas só
+quando `git_version` difere), `minimap` (só quando pedido), `term`,
+`status.eol`; spans com `f` e `c`. O cliente colore árvore e abas pelo
+caminho absoluto no `git.status`; o botão Parar aparece quando
+`output.running`.
 
 ## 14. Atalhos (tabela completa da v1.1)
 
@@ -455,6 +476,12 @@ interno) continua.
 - Extensão: `go test ./... -race`; `examples/smoke.nx` abre `sh -c 'echo ok'`
   e lê `ok`.
 - CI no Ubuntu roda as suítes Noxy.
+- Os testes usam cache e configuração próprios (`NOXY_EDITOR_CACHE_DIR`,
+  `NOXY_EDITOR_CONFIG_DIR` em `tests/tmp`) e nunca tocam no `~/.cache` e no
+  `~/.config` de quem roda; os smokes usam `SHELL=/bin/sh`.
+- Os cliques do smoke em abas e botões do painel são cliques de mouse reais
+  (`Input.dispatchMouseEvent`), não `dispatchEvent`: é o que pega o painel
+  que, sendo alça de arraste, engolia o clique dos filhos.
 
 ## 17. Documentação e achados
 
