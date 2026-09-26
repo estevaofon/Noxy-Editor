@@ -345,29 +345,61 @@ func tmp_root() -> string
     return root
 end
 
-func test_runner() -> void
-    print("runner")
-    let root: string = tmp_root()
-    let r: runner.RunState = runner.new_run()
-    check("comando com cd, aspas e /dev/null", runner.command("/x y", "a'b.nx") == "cd '/x y' && noxy 'a'\\''b.nx' < /dev/null 2>&1")
-    check("start", runner.start(ref r, root, "hello.nx") == "" && r.running && r.version == 1)
-    check("start durante execucao recusa", runner.start(ref r, root, "hello.nx") == "ja esta rodando")
+// run_until espera a execucao terminar (ate ~5 s), chamando poll.
+func run_until(r: ref runner.RunState) -> void
     let waited: int = 0
     while r.running && waited < 100 do
         sys.sleep(50)
-        runner.poll(ref r)
+        runner.poll(r, events.now())
         waited = waited + 1
     end
-    check("poll recolhe a saida e o codigo", !r.running && r.text == "$ noxy hello.nx\noi\n[saiu com 3]" && r.version == 2)
+end
+
+func alive(pid: int) -> bool
+    return sys.exec("kill -0 " + to_str(pid) + " 2>/dev/null").exit_code == 0
+end
+
+func test_runner() -> void
+    print("runner")
+    let root: string = tmp_root()
+    write_file(root + "/aos_poucos.nx", "use sys\nprint(\"um ação\")\nsys.sleep(700)\nprint(\"dois\")\n")
+    write_file(root + "/sem_fim.nx", "use sys\nprint(\"rodando\")\nwhile true do\n    sys.sleep(50)\nend\n")
+    let r: runner.RunState = runner.new_run()
+    check("start", runner.start(ref r, root, "hello.nx") == "" && r.running && r.pid > 0)
+    check("start durante execucao recusa", runner.start(ref r, root, "hello.nx") == "ja esta rodando")
+    run_until(ref r)
+    check("saida e codigo de saida", !r.running && r.text == "$ noxy hello.nx\noi\n[saiu com 3]")
+    check("diretorio temporario apagado no fim", !io.exists(r.dir))
+
+    let live: runner.RunState = runner.new_run()
+    runner.start(ref live, root, "aos_poucos.nx")
+    let waited: int = 0
+    while !strings.contains(live.text, "um") && waited < 60 do
+        sys.sleep(50)
+        runner.poll(ref live, events.now())
+        waited = waited + 1
+    end
+    check("saida ao vivo: a primeira linha chega antes do fim, com acento", strings.contains(live.text, "um ação") && !strings.contains(live.text, "dois") && live.running)
+    run_until(ref live)
+    check("depois chega o resto e o codigo", strings.ends_with(live.text, "um ação\ndois\n[saiu com 0]"))
+
+    let loop: runner.RunState = runner.new_run()
+    runner.start(ref loop, root, "sem_fim.nx")
+    sys.sleep(400)
+    runner.poll(ref loop, events.now())
+    let pid: int = loop.pid
+    check("programa sem fim roda", loop.running && alive(pid))
+    check("parar", runner.stop(ref loop, events.now()) == "")
+    run_until(ref loop)
+    check("parar encerra, com [interrompido] no painel", !loop.running && strings.ends_with(loop.text, "[interrompido]"))
+    check("sem processo orfao", !alive(pid))
+    check("parar sem execucao avisa", runner.stop(ref loop, events.now()) == "nada rodando")
+
     let bad: runner.RunState = runner.new_run()
     runner.start(ref bad, root, "nao.nx")
-    waited = 0
-    while bad.running && waited < 100 do
-        sys.sleep(50)
-        runner.poll(ref bad)
-        waited = waited + 1
-    end
-    check("arquivo inexistente mostra o erro do noxy", !bad.running && strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
+    run_until(ref bad)
+    check("arquivo inexistente mostra o erro do noxy", strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
+    check("caminho com aspas simples", runner.command("/x y", "a'b.nx", "/t") == "cd '/x y' && exec noxy 'a'\\''b.nx'")
 end
 
 func test_session() -> void
@@ -540,6 +572,18 @@ func test_events() -> void
         waited = waited + 1
     end
     check("poll recolhe a saida no quadro", strings.contains(last, "[saiu com 3]"))
+    write_file(root + "/sem_fim.nx", "use sys\nwhile true do\n    sys.sleep(50)\nend\n")
+    events.dispatch(ref s, "{\"kind\":\"tree_open\",\"path\":\"" + root + "/sem_fim.nx\",\"rows\":20,\"tree_version\":2}", 18)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"rows\":20,\"tree_version\":2}", 18)
+    check("f5 roda o programa sem fim", s.run.running)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 18)
+    waited = 0
+    while s.run.running && waited < 100 do
+        sys.sleep(50)
+        last = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 19)
+        waited = waited + 1
+    end
+    check("ctrl+f5 para a execucao", !s.run.running && strings.contains(last, "[interrompido]"))
     sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
     let fth: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"theme:nord\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando theme:nord muda o tema, grava e vai no quadro", s.settings.theme == "nord" && strings.contains(fth, "\"settings\":{\"theme\":\"nord\"}") && settings.load().theme == "nord")
