@@ -10,7 +10,7 @@
   const els = {
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
     editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
-    main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"),
+    main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     input: $("input"),
@@ -353,12 +353,17 @@
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
   els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); showOutput(false); });
-  els.outputResize.addEventListener("mousedown", (e) => {
-    if (e.button !== 0) return;
+  // o divisor e a barra "Saida" inteira redimensionam: na janela WebKitGTK a
+  // barra de rolagem horizontal do editor e sobreposta e captura o mouse
+  // perto da borda, entao so o divisor fino nao bastava
+  function startResize(e) {
+    if (e.button !== 0 || e.target.closest("#output-close")) return;
     e.preventDefault();
     resizing = { y: e.clientY, h: els.output.getBoundingClientRect().height };
     els.output.classList.add("resizing");
-  });
+  }
+  els.outputResize.addEventListener("mousedown", startResize);
+  els.outputHead.addEventListener("mousedown", startResize);
   document.addEventListener("mousemove", (e) => {
     if (!resizing) return;
     setOutputHeight(resizing.h + (resizing.y - e.clientY));

@@ -58,7 +58,7 @@ caminho dela ao navegador.
 | Enter | nova linha com a indentação da atual |
 | Escape | fechar o modal; senão colapsar a seleção |
 | F5 | salvar e rodar o arquivo ativo (`noxy arquivo.nx`), saída no painel |
-| Ctrl+J | mostrar ou ocultar o painel de saída (arraste a borda superior para redimensionar) |
+| Ctrl+J | mostrar ou ocultar o painel de saída (arraste a barra "Saída" ou o divisor acima dela para redimensionar) |
 | Ctrl+Q | sair (pergunta se há abas com alterações) |
 
 Mouse: clique posiciona, arraste seleciona, duplo clique seleciona a palavra,

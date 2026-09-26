@@ -81,8 +81,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 /* painel de saida: a altura vem do JS (35% da area na primeira vez, depois
    o que o usuario arrastou); o divisor no topo redimensiona */
 #output { position: relative; background: var(--bg-side); display: flex; flex-direction: column; min-height: 100px; }
-#output-resize { flex: none; height: 6px; cursor: ns-resize; border-top: 1px solid var(--border); }
+#output-resize { flex: none; position: relative; height: 8px; cursor: ns-resize; border-top: 1px solid var(--border); }
+#output-resize::after { content: ""; position: absolute; left: 50%; top: 3px; width: 40px; height: 3px; margin-left: -20px; border-radius: 2px; background: var(--fg-dim); opacity: .6; }
 #output-resize:hover, #output.resizing #output-resize { background: var(--accent); }
+#output-head { cursor: ns-resize; user-select: none; }
 #output.resizing { user-select: none; }
 #output-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
 #output-close { color: var(--fg-dim); font-size: 16px; line-height: 1; }
