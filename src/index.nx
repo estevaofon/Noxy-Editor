@@ -1,0 +1,132 @@
+// src/index.nx — o indice de arquivos da raiz (caminhos relativos) e o
+// filtro difuso do Quick Open. build percorre a arvore numa task
+// (session.start_index); filter roda a cada tecla sobre a lista pronta.
+use io
+use strings select to_lower, codes, starts_with
+
+let SKIP: string[] = ["noxy_libs", "node_modules"]
+
+// walk acrescenta a out os arquivos sob dir, com prefixo rel, ordenados
+// como list_dir devolve; pula ocultos e SKIP.
+func walk(dir: string, rel: string, out: ref string[]) -> void
+    let r: io.IOLinesResult = io.list_dir(dir)
+    if !r.ok then
+        return
+    end
+    for name in r.data do
+        if starts_with(name, ".") || contains(SKIP, name) then
+            continue
+        end
+        let full: string = dir + "/" + name
+        let path: string = name
+        if rel != "" then
+            path = rel + "/" + name
+        end
+        if io.stat(full).is_dir then
+            walk(full, path, out)
+        else
+            append(out, path)
+        end
+    end
+end
+
+func build(root: string) -> string[]
+    let out: string[] = []
+    walk(root, "", ref out)
+    return out
+end
+
+struct Match
+    path: string
+    score: int
+end
+
+func is_sep(c: int) -> bool
+    return c == 47 || c == 95 || c == 45 || c == 46    // / _ - .
+end
+
+// score pontua path para query (subsequencia, sem diferenciar maiusculas):
+// +1 por caractere casado, +3 no inicio do nome do arquivo, +2 depois de um
+// separador, +1 quando consecutivo ao anterior; caminhos mais curtos
+// desempatam. -1 quando nao casa.
+func score(path: string, query: string) -> int
+    let p: int[] = codes(to_lower(path))
+    let q: int[] = codes(to_lower(query))
+    let name_start: int = 0
+    for i in range(length(p)) do
+        if p[i] == 47 then
+            name_start = i + 1
+        end
+    end
+    let total: int = 0
+    let pos: int = 0
+    let last: int = -2
+    for qc in q do
+        let found: int = -1
+        let i: int = pos
+        while i < length(p) && found < 0 do
+            if p[i] == qc then
+                found = i
+            end
+            i = i + 1
+        end
+        if found < 0 then
+            return -1
+        end
+        total = total + 1
+        if found == name_start then
+            total = total + 3
+        elif found > 0 && is_sep(p[found - 1]) then
+            total = total + 2
+        end
+        if found == last + 1 then
+            total = total + 1
+        end
+        last = found
+        pos = found + 1
+    end
+    return total * 100 - length(p)
+end
+
+// filter devolve ate limit casamentos, do melhor para o pior; sem consulta,
+// os primeiros limit caminhos em ordem alfabetica.
+func filter(paths: string[], query: string, limit: int) -> Match[]
+    let out: Match[] = []
+    if query == "" then
+        let sorted: string[] = paths
+        for i in range(1, length(sorted)) do
+            let j: int = i
+            while j > 0 && sorted[j - 1] > sorted[j] do
+                let t: string = sorted[j - 1]
+                sorted[j - 1] = sorted[j]
+                sorted[j] = t
+                j = j - 1
+            end
+        end
+        for i in range(length(sorted)) do
+            if i >= limit then
+                break
+            end
+            append(ref out, Match(sorted[i], 0))
+        end
+        return out
+    end
+    for path in paths do
+        let sc: int = score(path, query)
+        if sc < 0 then
+            continue
+        end
+        // insere ordenado por score decrescente, mantendo no maximo limit
+        let i: int = length(out)
+        append(ref out, Match(path, sc))
+        while i > 0 && out[i - 1].score < sc do
+            out[i] = out[i - 1]
+            i = i - 1
+        end
+        out[i] = Match(path, sc)
+        if length(out) > limit then
+            pop(ref out)
+        end
+    end
+    return out
+end

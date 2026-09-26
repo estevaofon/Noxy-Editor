@@ -12,6 +12,7 @@ use src.runner as runner
 use src.frame as frame
 use src.settings as settings
 use src.commands as commands
+use src.index as index
 
 
 struct Event
@@ -86,6 +87,11 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
         session.request_quit(s)
     elif id == "palette" then
         open_list(s, "palette")
+    elif id == "quick_open" then
+        open_list(s, "files")
+    elif id == "reindex" then
+        session.start_index(s)
+        s.message = "reindexando..."
     elif starts_with(id, "theme:") then
         let theme: string = substring(id, 6, length(id))
         if contains(settings.THEMES, theme) then
@@ -107,6 +113,10 @@ func refill_list(s: ref session.Session) -> void
     if s.list.kind == "palette" then
         for c in commands.filter(commands.all(), s.list.query) do
             append(ref items, session.Item(c.id, c.label, c.hint))
+        end
+    elif s.list.kind == "files" then
+        for m in index.filter(s.files, s.list.query, 50) do
+            append(ref items, session.Item(s.root + "/" + m.path, m.path, ""))
         end
     end
     s.list.items = items
@@ -134,6 +144,8 @@ func pick_list(s: ref session.Session, index: int, now: int) -> void
     session.close_list(s)
     if kind == "palette" then
         run_command(s, item.id, now)
+    elif kind == "files" then
+        session.open_file(s, item.id)
     end
 end
 
@@ -156,6 +168,10 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
     end
     if e.ctrl && e.shift && e.key == "p" then
         run_command(s, "palette", now)
+        return
+    end
+    if e.ctrl && e.key == "p" then
+        run_command(s, "quick_open", now)
         return
     end
     if e.ctrl && e.key == "`" then
@@ -338,5 +354,6 @@ func dispatch(s: ref session.Session, body: string, now: int) -> string
         s.message = "erro interno: " + r.failure.message
     end
     runner.poll(ref s.run)
+    session.poll_index(s)
     return frame.build(s, e.tree_version)
 end

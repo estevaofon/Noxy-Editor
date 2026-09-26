@@ -60,6 +60,7 @@ end
 if first_file != "" then
     session.open_file(ref s, first_file)
 end
+session.start_index(ref s)
 
 let port: int = server.start(editor_dir + "/web", uuid.uuid4())
 if port == 0 then

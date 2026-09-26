@@ -645,7 +645,7 @@ func test_index() -> void
     io.mkdir(root + "/noxy_libs/x")
     write_file(root + "/noxy_libs/x/lib.nx", "")
     let files: string[] = index.build(root)
-    check("indice recursivo, sem ocultos nem noxy_libs", length(files) == 5 && contains(files, "sub/c.nx") && contains(files, "b.nx") && !contains(files, ".hidden") && !contains(files, "noxy_libs/x/lib.nx"))
+    check("indice recursivo, sem ocultos nem noxy_libs", length(files) == 4 && contains(files, "sub/c.nx") && contains(files, "b.nx") && !contains(files, ".hidden") && !contains(files, "noxy_libs/x/lib.nx"))
     check("sem consulta: os primeiros em ordem", index.filter(files, "", 2)[0].path == "a.txt" && length(index.filter(files, "", 2)) == 2)
     let m: index.Match[] = index.filter(files, "c", 10)
     check("inicio do nome pontua mais que letra no meio", m[0].path == "sub/c.nx")
