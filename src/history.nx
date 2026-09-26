@@ -1,0 +1,59 @@
+// src/history.nx — undo e redo por snapshot. Cada snapshot e uma copia por
+// valor das linhas; copy-on-write faz isso custar uma copia rasa do array.
+use src.document as doc
+
+let MAX = 200
+let GROUP_MS = 1000
+
+struct Snapshot
+    lines: string[]
+    cursor: doc.Pos
+end
+
+struct History
+    undo: Snapshot[]
+    redo: Snapshot[]
+    last_kind: string   // "typing", "delete" ou "other"
+    last_time: int      // ms do ultimo record
+end
+
+func new_history() -> History
+    return History([], [], "", 0)
+end
+
+// record guarda o estado ANTES de uma edicao. Digitacao ou apagamento
+// consecutivos dentro de GROUP_MS nao empilham de novo: o snapshot anterior
+// ja guarda o estado antes do burst. Toda edicao nova limpa o redo.
+func record(h: ref History, snap: Snapshot, kind: string, now: int) -> void
+    let grouped: bool = (kind == "typing" || kind == "delete") && kind == h.last_kind && now - h.last_time < GROUP_MS
+    h.last_kind = kind
+    h.last_time = now
+    h.redo = []
+    if grouped && length(h.undo) > 0 then
+        return
+    end
+    append(ref h.undo, snap)
+    if length(h.undo) > MAX then
+        h.undo = slice(h.undo, 1, length(h.undo))
+    end
+end
+
+// undo devolve o snapshot a restaurar e guarda current no redo; null se
+// nao ha o que desfazer.
+func undo(h: ref History, current: Snapshot) -> Snapshot?
+    if length(h.undo) == 0 then
+        return null
+    end
+    append(ref h.redo, current)
+    h.last_kind = ""
+    return pop(ref h.undo)
+end
+
+func redo(h: ref History, current: Snapshot) -> Snapshot?
+    if length(h.redo) == 0 then
+        return null
+    end
+    append(ref h.undo, current)
+    h.last_kind = ""
+    return pop(ref h.redo)
+end

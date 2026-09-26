@@ -4,6 +4,7 @@ use sys
 use src.document as doc
 use src.lexer as lexer
 use io
+use src.history as history
 
 let fails = 0
 let total = 0
@@ -101,6 +102,41 @@ func test_lexer() -> void
     check("invariante: tokens concatenados devolvem a linha, em todo src/", broken == 0)
 end
 
+func test_history() -> void
+    print("history")
+    let h: history.History = history.new_history()
+    let s1: history.Snapshot = history.Snapshot(["a"], doc.Pos(0, 1))
+    let s2: history.Snapshot = history.Snapshot(["ab"], doc.Pos(0, 2))
+    let s3: history.Snapshot = history.Snapshot(["abc"], doc.Pos(0, 3))
+    history.record(ref h, s1, "typing", 1000)
+    history.record(ref h, s2, "typing", 1500)
+    check("digitacao consecutiva agrupa", length(h.undo) == 1)
+    history.record(ref h, s3, "typing", 3000)
+    check("depois de 1 s abre outro grupo", length(h.undo) == 2)
+    history.record(ref h, s3, "delete", 3100)
+    check("kind diferente abre outro grupo", length(h.undo) == 3)
+
+    let back: history.Snapshot? = history.undo(ref h, history.Snapshot(["abcd"], doc.Pos(0, 4)))
+    check("undo devolve o topo", back != null && length(h.undo) == 2 && length(h.redo) == 1)
+    if back != null then
+        check("undo devolve o snapshot certo", back.lines[0] == "abc")
+    end
+    let fwd: history.Snapshot? = history.redo(ref h, s3)
+    check("redo devolve o que foi desfeito", fwd != null && length(h.redo) == 0 && length(h.undo) == 3)
+    history.undo(ref h, s3)
+    history.record(ref h, s1, "other", 5000)
+    check("edicao nova limpa o redo", length(h.redo) == 0)
+    let empty: history.History = history.new_history()
+    check("undo vazio devolve null", history.undo(ref empty, s1) == null)
+
+    let big: history.History = history.new_history()
+    for i in range(250) do
+        history.record(ref big, s1, "other", i)
+    end
+    check("limite de 200 entradas", length(big.undo) == 200)
+end
+
 test_document()
 test_lexer()
+test_history()
 report()
