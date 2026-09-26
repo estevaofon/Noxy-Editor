@@ -19,6 +19,19 @@ janela nesta máquina, o editor abre num navegador em modo app (Chrome,
 Chromium, Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
 só imprime a URL, para desenvolver o cliente ou rodar o smoke.
 
+## Distribuir
+
+    noxy build editor.nx -o dist/noxy-editor
+
+gera um executável único (Linux e Windows; macOS experimental) que roda sem
+`noxy` nem `noxy_libs` na máquina: `dist/noxy-editor pasta`. Ele leva o
+`web/` (linha `include web` do `noxy.mod`), os plugins `noxy_webview` e
+`noxy_pty` desta plataforma e o fonte do editor — legível com `unzip`. O F5
+roda os arquivos com o próprio executável (`sys.executable()` +
+`NOXY_INTERPRETER=1` no processo filho); o terminal integrado **não** ganha
+um `noxy` no PATH, porque o app não instala nada. Detalhes em
+`docs/BUILD.md` do noxy.
+
 ## Extensão de janela
 
 A janela nativa é o package [`noxy_webview`](https://github.com/estevaofon/noxy_webview),
