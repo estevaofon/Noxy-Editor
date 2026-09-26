@@ -12,6 +12,7 @@ use src.session as session
 use src.frame as frame
 use src.events as events
 use src.browser as browser
+use src.settings as settings
 
 let fails = 0
 let total = 0
@@ -528,6 +529,15 @@ func test_events() -> void
         waited = waited + 1
     end
     check("poll recolhe a saida no quadro", strings.contains(last, "[saiu com 3]"))
+    sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+    let fth: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"theme:nord\",\"rows\":20,\"tree_version\":2}", 19)
+    check("comando theme:nord muda o tema, grava e vai no quadro", s.settings.theme == "nord" && strings.contains(fth, "\"settings\":{\"theme\":\"nord\"}") && settings.load().theme == "nord")
+    let fu2: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"zzz\",\"rows\":20,\"tree_version\":2}", 19)
+    check("comando desconhecido vira mensagem", strings.contains(fu2, "comando desconhecido: zzz"))
+    let was_open: bool = s.panel.open
+    events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
+    check("comando panel alterna o painel", s.panel.open != was_open)
+    io.remove(sys.getcwd() + "/tests/tmp/run/config/settings.json")
     events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
     check("quit marca quitting", s.quitting)
 
@@ -566,6 +576,24 @@ func test_browser() -> void
     check("cleanup remove a pagina e o diretorio", !io.exists(page) && !io.exists(dir))
 end
 
+func test_settings() -> void
+    print("settings")
+    let dir: string = sys.getcwd() + "/tests/tmp/config"
+    sys.setenv("NOXY_EDITOR_CONFIG_DIR", dir)
+    io.remove(dir + "/settings.json")
+    let d: settings.Settings = settings.load()
+    check("sem arquivo, padrao escuro", d.theme == "dark" && settings.path() == dir + "/settings.json")
+    d.theme = "nord"
+    check("save cria o diretorio e grava", settings.save(d) && read_file(dir + "/settings.json") == "{\"theme\":\"nord\"}")
+    check("load le o que foi gravado", settings.load().theme == "nord")
+    write_file(dir + "/settings.json", "{nope")
+    check("arquivo invalido volta ao padrao", settings.load().theme == "dark")
+    write_file(dir + "/settings.json", "{\"theme\":\"neon\"}")
+    check("tema desconhecido volta ao padrao", settings.load().theme == "dark")
+    check("lista de temas", length(settings.THEMES) == 5 && contains(settings.THEMES, "monokai"))
+    io.remove(dir + "/settings.json")
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -576,4 +604,5 @@ test_session()
 test_frame()
 test_events()
 test_browser()
+test_settings()
 report()

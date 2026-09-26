@@ -81,6 +81,7 @@ ws.call("Page.navigate", {"url": url}); settle(1500)
 check("arvore renderizada", ev("document.querySelectorAll('#tree .node').length") == 3)
 check("nome da raiz", ev("document.getElementById('root-name').textContent") == "web")
 check("titulo inicial", ev("document.title") == "Noxy Editor")
+check("tema escuro aplicado no html", ev("document.documentElement.classList.contains('theme-dark')"))
 # abrir exemplo.nx pela arvore
 ev("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
 check("abrir arquivo cria aba e linhas", ev("document.querySelectorAll('.tab').length") == 1 and ev("document.querySelectorAll('#text .line').length") == 11)
