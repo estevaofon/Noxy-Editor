@@ -66,6 +66,7 @@ struct Frame
     modal: session.Modal
     panel: session.Panel
     settings: settings.Settings
+    list: session.List
 end
 
 // cut_span corta um token que comeca na coluna col em ate tres pedacos na
@@ -178,7 +179,7 @@ func build(s: ref session.Session, client_tree_version: int) -> string
         right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
         eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings)
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list)
     s.clipboard = ""
     return json_dumps(f)
 end

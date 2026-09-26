@@ -41,6 +41,21 @@ end
 
 let PANEL_TABS: string[] = ["output", "search", "terminal"]
 
+// Item e List sao a lista filtravel sobre o editor: a paleta de comandos
+// ("palette") e o Quick Open ("files"). kind vazio = fechada.
+struct Item
+    id: string
+    label: string
+    hint: string
+end
+
+struct List
+    kind: string
+    query: string
+    items: Item[]
+    selected: int
+end
+
 struct Session
     root: string        // absoluto, sem barra final
     tabs: Tab[]
@@ -58,6 +73,7 @@ struct Session
     bye_page: string    // id da pagina que se despediu
     panel: Panel
     settings: settings.Settings
+    list: List
 end
 
 // show_panel abre o painel numa aba; uma aba desconhecida e ignorada.
@@ -73,12 +89,33 @@ func toggle_panel(s: ref Session) -> void
     s.panel.open = !s.panel.open
 end
 
+func close_list(s: ref Session) -> void
+    s.list = List("", "", [], 0)
+end
+
+// list_move desloca a selecao dentro dos limites.
+func list_move(s: ref Session, delta: int) -> void
+    let n: int = length(s.list.items)
+    if n == 0 then
+        s.list.selected = 0
+        return
+    end
+    let i: int = s.list.selected + delta
+    if i < 0 then
+        i = 0
+    end
+    if i >= n then
+        i = n - 1
+    end
+    s.list.selected = i
+end
+
 func no_modal() -> Modal
     return Modal("", [], "")
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load())
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0))
 end
 
 func basename(path: string) -> string

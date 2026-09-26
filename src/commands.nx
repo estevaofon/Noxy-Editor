@@ -1,0 +1,62 @@
+// src/commands.nx — o registro dos comandos da paleta: id, rotulo e atalho.
+// Quem executa e events.run_command, pelo id; aqui so a lista e o filtro.
+use strings select to_lower, split
+
+struct Command
+    id: string
+    label: string
+    hint: string      // o atalho, para mostrar; "" sem atalho
+end
+
+func all() -> Command[]
+    return [
+        Command("save", "Salvar", "Ctrl+S"),
+        Command("save_all", "Salvar tudo", ""),
+        Command("close_tab", "Fechar aba", "Ctrl+W"),
+        Command("run", "Rodar arquivo", "F5"),
+        Command("stop", "Parar execucao", "Ctrl+F5"),
+        Command("find", "Buscar no arquivo", "Ctrl+F"),
+        Command("replace", "Substituir no arquivo", "Ctrl+H"),
+        Command("search", "Buscar na pasta", "Ctrl+Shift+F"),
+        Command("quick_open", "Abrir arquivo", "Ctrl+P"),
+        Command("panel", "Mostrar ou ocultar o painel", "Ctrl+J"),
+        Command("terminal", "Terminal", "Ctrl+`"),
+        Command("theme:dark", "Tema: Escuro", ""),
+        Command("theme:light", "Tema: Claro", ""),
+        Command("theme:dracula", "Tema: Dracula", ""),
+        Command("theme:nord", "Tema: Nord", ""),
+        Command("theme:monokai", "Tema: Monokai", ""),
+        Command("git_refresh", "Git: atualizar", ""),
+        Command("reindex", "Reindexar arquivos", ""),
+        Command("quit", "Sair", "Ctrl+Q")
+    ]
+end
+
+// filter devolve os comandos cujo rotulo contem todas as palavras da
+// consulta, sem diferenciar maiusculas; consulta vazia devolve todos.
+func filter(cmds: Command[], query: string) -> Command[]
+    let words: string[] = []
+    for w in split(to_lower(query), " ").parts do
+        if w != "" then
+            append(ref words, w)
+        end
+    end
+    let out: Command[] = []
+    for c in cmds do
+        let label: string = to_lower(c.label)
+        let ok: bool = true
+        for w in words do
+            if !has_word(label, w) then
+                ok = false
+            end
+        end
+        if ok then
+            append(ref out, c)
+        end
+    end
+    return out
+end
+
+func has_word(label: string, w: string) -> bool
+    return length(split(label, w).parts) > 1
+end

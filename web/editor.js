@@ -14,6 +14,7 @@
     panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
+    list: $("list"), listInput: $("list-input"), listItems: $("list-items"),
     input: $("input"),
   };
   const LINE_H = 22;
@@ -109,6 +110,7 @@
     }
     renderPanel(f.panel);
     renderModal(f.modal);
+    renderList(f.list);
     if (f.clipboard) {
       internalClip = f.clipboard;
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(f.clipboard).catch(() => {});
@@ -220,6 +222,40 @@
     els.cursor.style.animation = "";
   }
 
+  // renderList: a lista (paleta ou arquivos) vem inteira do quadro; o campo
+  // de texto e do cliente e manda list_filter a cada tecla
+  let listKind = "";
+  function renderList(l) {
+    if (!l.kind) {
+      if (listKind) { els.list.classList.add("hidden"); listKind = ""; focusInput(); }
+      return;
+    }
+    if (l.kind !== listKind) {
+      listKind = l.kind;
+      els.listInput.value = "";
+      els.listInput.placeholder = l.kind === "files" ? "Nome do arquivo" : "Comando";
+      els.list.classList.remove("hidden");
+    }
+    els.listItems.replaceChildren(...(l.items.length ? l.items.map((it, i) => {
+      const row = el("div", "litem" + (i === l.selected ? " selected" : ""));
+      row.append(el("span", "label", it.label), el("span", "hint", it.hint));
+      row.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "list_pick", index: i }); });
+      return row;
+    }) : [el("div", "lempty", "nada encontrado")]));
+    const sel = els.listItems.querySelector(".selected");
+    if (sel) sel.scrollIntoView({ block: "nearest" });
+    els.listInput.focus();
+  }
+  els.listInput.addEventListener("input", () => send({ kind: "list_filter", text: els.listInput.value }));
+  els.listInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); send({ kind: "list_move", delta: 1 }); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); send({ kind: "list_move", delta: -1 }); }
+    else if (e.key === "Enter") { e.preventDefault(); send({ kind: "list_pick", index: -1 }); }
+    else if (e.key === "Escape") { e.preventDefault(); send({ kind: "list_close" }); }
+    e.stopPropagation();
+  });
+  els.list.addEventListener("mousedown", (e) => { if (e.target === els.list) send({ kind: "list_close" }); });
+
   function renderModal(m) {
     if (!m.text) { els.modal.classList.add("hidden"); return; }
     els.modalText.textContent = m.text;
@@ -235,7 +271,7 @@
   // chegam pelo textarea (input / compositionend), o que faz acentos e IME
   // funcionarem.
   const NAV = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1, Tab: 1, Escape: 1, F5: 1 };
-  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
+  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, p: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
 
   els.input.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
@@ -266,6 +302,7 @@
     if (t) send({ kind: "paste", text: t.replace(/\r\n?/g, "\n") });
   });
   function focusInput() {
+    if (listKind) return;   // a lista tem o foco
     if (document.activeElement !== els.input) els.input.focus({ preventScroll: true });
   }
   document.addEventListener("mousedown", () => setTimeout(focusInput, 0));
