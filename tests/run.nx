@@ -16,6 +16,7 @@ use src.settings as settings
 use src.commands as commands
 use src.index as index
 use src.find as find
+use src.search as search
 
 let fails = 0
 let total = 0
@@ -577,6 +578,22 @@ func test_events() -> void
     check("replace_all pelo despacho", !strings.contains(s.tabs[s.active].editor.doc.lines[0], "c") && length(s.find.matches) == 0)
     events.dispatch(ref s, "{\"kind\":\"find_close\",\"rows\":20,\"tree_version\":2}", 19)
     check("find_close fecha e limpa as marcas", !s.find.open && length(s.find.matches) == 0)
+    // busca na pasta pelo despacho
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f\",\"ctrl\":true,\"shift\":true,\"rows\":20,\"tree_version\":2}", 19)
+    check("ctrl+shift+f abre o painel na aba busca", s.panel.open && s.panel.tab == "search")
+    events.dispatch(ref s, "{\"kind\":\"search\",\"text\":\"oi\",\"rows\":20,\"tree_version\":2}", 19)
+    check("search dispara a task", s.search.running && s.search.query == "oi")
+    let waited3: int = 0
+    let fs: string = ""
+    while s.search.running && waited3 < 100 do
+        sys.sleep(20)
+        fs = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 19)
+        waited3 = waited3 + 1
+    end
+    check("poll recolhe os resultados no quadro", !s.search.running && length(s.search.hits) >= 1 && strings.contains(fs, "\"rel\":\"hello.nx\""))
+    events.dispatch(ref s, "{\"kind\":\"search_open\",\"path\":\"" + root + "/hello.nx\",\"line\":1,\"col\":7,\"text\":\"oi\",\"rows\":20,\"tree_version\":2}", 19)
+    let hed: editing.Editor = s.tabs[s.active].editor
+    check("search_open abre o arquivo com a ocorrencia selecionada", strings.ends_with(hed.doc.path, "/hello.nx") && editing.copy(hed) == "oi")
     let was_open: bool = s.panel.open
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando panel alterna o painel", s.panel.open != was_open)
@@ -721,6 +738,34 @@ func test_find() -> void
     check("replace_all e um unico passo de undo", multi.doc.lines[0] == "a-a" && multi.doc.lines[1] == "a")
 end
 
+func test_search() -> void
+    print("search")
+    let root: string = tmp_root()
+    io.mkdir(root + "/node_modules")
+    write_file(root + "/node_modules/x.nx", "print(\"oi\")")
+    let bf: io.File = io.open(root + "/bin.dat", "w")
+    io.write_bytes(bf, hex_decode("fffe7072696e74"))
+    io.close(bf)
+    let hits: search.Hit[] = search.run(root, "print", false, 500)
+    let rels: string[] = []
+    for h in hits do
+        append(ref rels, h.rel)
+    end
+    check("acha nos arquivos de texto, pula node_modules e binarios", contains(rels, "hello.nx") && contains(rels, "sub/c.nx") && !contains(rels, "node_modules/x.nx") && !contains(rels, "bin.dat"))
+    let h0: search.Hit = hits[0]
+    check("hit com linha, coluna e texto", h0.line >= 0 && h0.col >= 0 && strings.contains(h0.text, "print"))
+    check("maiusculas: sem diferenciar acha PRINT", length(search.run(root, "PRINT", false, 500)) == length(hits) && length(search.run(root, "PRINT", true, 500)) == 0)
+    check("limite de ocorrencias", length(search.run(root, "print", false, 1)) == 1)
+    check("consulta vazia nao busca", length(search.run(root, "", false, 500)) == 0)
+    let long: string = strings.repeat("a", 300) + "zz"
+    write_file(root + "/long.txt", long)
+    let lh: search.Hit[] = search.run(root, "zz", false, 500)
+    check("linha longa e cortada em 200 caracteres ao redor da ocorrencia", length(lh) == 1 && length(lh[0].text) <= 200 && strings.contains(lh[0].text, "zz"))
+    io.remove(root + "/long.txt")
+    io.remove(root + "/bin.dat")
+    sys.exec("rm -rf " + browser.shell_quote(root + "/node_modules"))
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -735,4 +780,5 @@ test_settings()
 test_commands()
 test_index()
 test_find()
+test_search()
 report()
