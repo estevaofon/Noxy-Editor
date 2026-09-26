@@ -47,7 +47,14 @@
         <button id="output-close" title="Fechar (Ctrl+J)">×</button>
       </div>
       <pre id="output-text" class="pview"></pre>
-      <div id="search-view" class="pview hidden"></div>
+      <div id="search-view" class="pview hidden">
+        <div class="search-row">
+          <input id="search-input" placeholder="Buscar na pasta (Enter)" autocomplete="off" spellcheck="false">
+          <button id="search-case" title="Diferenciar maiúsculas">Aa</button>
+          <span id="search-status"></span>
+        </div>
+        <div id="search-results"></div>
+      </div>
       <div id="term-view" class="pview hidden"></div>
     </div>
     <div id="status">

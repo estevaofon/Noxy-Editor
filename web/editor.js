@@ -12,6 +12,7 @@
     editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
     panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
+    searchInput: $("search-input"), searchCase: $("search-case"), searchStatus: $("search-status"), searchResults: $("search-results"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     list: $("list"), listInput: $("list-input"), listItems: $("list-items"),
@@ -59,6 +60,7 @@
     ev.rows = rows;
     ev.tree_version = treeVersion;
     ev.page = PAGE_ID;
+    ev.search_version = searchVersion;
     try {
       const res = await fetch("/event", {
         method: "POST",
@@ -111,6 +113,7 @@
       els.outputText.scrollTop = els.outputText.scrollHeight;
     }
     renderPanel(f.panel);
+    renderSearch(f.search);
     renderModal(f.modal);
     renderList(f.list);
     renderFind(f.find);
@@ -323,6 +326,7 @@
   function onKeyDown(e) {
     if (e.isComposing) return;
     const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "f") wantSearchFocus = true;
     if (e.ctrlKey || e.metaKey) {
       if (key === "c") { e.preventDefault(); send({ kind: "copy" }); return; }
       if (key === "x") { e.preventDefault(); send({ kind: "cut" }); return; }
@@ -352,7 +356,7 @@
   function focusInput() {
     if (listKind) return;   // a lista tem o foco
     const a = document.activeElement;
-    if (a && a.closest && a.closest("#findbar")) return;   // a barra de busca tem o foco
+    if (a && a.closest && (a.closest("#findbar") || a.closest("#search-view"))) return;   // um campo de busca tem o foco
     if (document.activeElement !== els.input) els.input.focus({ preventScroll: true });
   }
   document.addEventListener("mousedown", () => setTimeout(focusInput, 0));
@@ -441,10 +445,42 @@
     outputH = clampOutputHeight(h);
     els.main.style.setProperty("--output-h", outputH + "px");
   }
+  // renderSearch: resultados da busca na pasta; so chegam quando a versao muda
+  let searchVersion = 0, searchCase = false;
+  function renderSearch(sr) {
+    searchCase = sr.case_sensitive;
+    els.searchCase.classList.toggle("on", sr.case_sensitive);
+    els.searchStatus.textContent = sr.running ? "buscando…" : (sr.query ? (sr.version === searchVersion ? els.searchStatus.textContent : "") : "");
+    if (sr.version === searchVersion) return;
+    searchVersion = sr.version;
+    if (sr.running) { els.searchResults.replaceChildren(); return; }
+    const nodes = [];
+    let last = "";
+    for (const h of sr.hits) {
+      if (h.rel !== last) { nodes.push(el("div", "sfile", h.rel)); last = h.rel; }
+      const row = el("div", "shit");
+      row.append(el("span", "sline", String(h.line + 1)), el("span", "stext", h.text.trim()));
+      row.addEventListener("mousedown", (e) => { e.preventDefault(); els.searchInput.blur(); focusInput(); send({ kind: "search_open", path: h.path, line: h.line, col: h.col, text: sr.query }); });
+      nodes.push(row);
+    }
+    els.searchResults.replaceChildren(...nodes);
+    els.searchStatus.textContent = sr.query ? (sr.hits.length ? sr.hits.length + (sr.truncated ? "+" : "") + " ocorrências" : "sem resultados") : "";
+  }
+  els.searchInput.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !["a", "c", "v", "x", "z"].includes(e.key.toLowerCase())) { onKeyDown(e); e.stopPropagation(); return; }
+    if (e.key === "Enter") { e.preventDefault(); send({ kind: "search", text: els.searchInput.value, case_sensitive: searchCase }); }
+    else if (e.key === "Escape") { e.preventDefault(); els.searchInput.blur(); focusInput(); }
+    e.stopPropagation();
+  });
+  els.searchCase.addEventListener("mousedown", (e) => { e.preventDefault(); searchCase = !searchCase; els.searchCase.classList.toggle("on", searchCase); });
+
   // renderPanel: aberto ou fechado e a aba ativa vem do quadro; a altura e
   // conveniencia local
+  let panelTab = "";
+  let wantSearchFocus = false;   // so ctrl+shift+f e o clique na aba levam o foco ao campo
   function renderPanel(panel) {
     if (!panel.open) {
+      panelTab = "";
       els.output.classList.add("hidden");
       els.main.style.setProperty("--output-h", "0px");
       return;
@@ -458,6 +494,8 @@
     }
     els.output.classList.remove("hidden");
     for (const tab of els.panelTabs.querySelectorAll(".ptab")) tab.classList.toggle("active", tab.dataset.tab === panel.tab);
+    if (panel.tab === "search" && wantSearchFocus) { wantSearchFocus = false; setTimeout(() => els.searchInput.focus(), 0); }
+    panelTab = panel.tab;
     els.outputText.classList.toggle("hidden", panel.tab !== "output");
     els.searchView.classList.toggle("hidden", panel.tab !== "search");
     els.termView.classList.toggle("hidden", panel.tab !== "terminal");
@@ -467,7 +505,7 @@
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
   els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_toggle" }); });
   for (const tab of els.panelTabs.querySelectorAll(".ptab")) {
-    tab.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_tab", key: tab.dataset.tab }); });
+    tab.addEventListener("mousedown", (e) => { e.preventDefault(); if (tab.dataset.tab === "search") wantSearchFocus = true; send({ kind: "panel_tab", key: tab.dataset.tab }); });
   }
   // o divisor e a barra "Saida" inteira redimensionam, com Pointer Events e
   // captura do ponteiro: uma vez iniciado, o arraste segue o divisor mesmo
@@ -500,7 +538,7 @@
     const r = rowsNow();
     if (r !== rows) { rows = r; send({ kind: "poll" }); }
   }).observe(els.editor);
-  setInterval(() => { if (frame && frame.output.running) send({ kind: "poll" }); }, 250);
+  setInterval(() => { if (frame && (frame.output.running || frame.search.running)) send({ kind: "poll" }); }, 250);
   window.addEventListener("pagehide", () => {
     navigator.sendBeacon("/event?t=" + encodeURIComponent(token), JSON.stringify({ kind: "bye", page: PAGE_ID, rows, tree_version: treeVersion }));
   });

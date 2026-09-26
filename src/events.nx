@@ -32,10 +32,11 @@ struct Event
     tree_version: int   // a versao da arvore que o cliente tem
     page: string        // id da pagina (por carga), para o bye de um reload
     case_sensitive: bool   // da busca (case e palavra reservada)
+    search_version: int    // a versao dos resultados da busca na pasta que o cliente tem
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0)
 end
 
 // trivial: eventos que nao apagam a mensagem de status.
@@ -91,6 +92,8 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
         open_list(s, "palette")
     elif id == "quick_open" then
         open_list(s, "files")
+    elif id == "search" then
+        session.show_panel(s, "search")
     elif id == "find" || id == "replace" then
         if s.active >= 0 then
             s.find.open = true
@@ -193,6 +196,10 @@ func handle_key(s: ref session.Session, e: Event, now: int) -> void
     end
     if e.ctrl && e.key == "p" then
         run_command(s, "quick_open", now)
+        return
+    end
+    if e.ctrl && e.shift && e.key == "f" then
+        run_command(s, "search", now)
         return
     end
     if e.ctrl && e.key == "f" then
@@ -384,6 +391,13 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         end
     elif e.kind == "find_close" then
         close_find(ref s)
+    elif e.kind == "search" then
+        session.start_search(ref s, e.text, e.case_sensitive)
+    elif e.kind == "search_open" then
+        session.open_file(ref s, e.path)
+        if s.active >= 0 && s.tabs[s.active].editor.doc.path == e.path then
+            editing.select_range(ref s.tabs[s.active].editor, doc.Pos(e.line, e.col), doc.Pos(e.line, e.col + length(e.text)), s.rows)
+        end
     elif e.kind == "replace_one" then
         if s.active >= 0 then
             find.replace_current(ref s.tabs[s.active].editor, ref s.find, e.text, s.rows, now)
@@ -430,5 +444,6 @@ func dispatch(s: ref session.Session, body: string, now: int) -> string
     end
     runner.poll(ref s.run)
     session.poll_index(s)
-    return frame.build(s, e.tree_version)
+    session.poll_search(s)
+    return frame.build(s, e.tree_version, e.search_version)
 end

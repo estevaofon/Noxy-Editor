@@ -9,6 +9,7 @@ use src.editing as editing
 use src.session as session
 use src.settings as settings
 use src.find as find
+use src.search as search
 
 struct SpanOut
     k: string       // kind do token
@@ -24,6 +25,15 @@ struct Mark
     a: int
     b: int
     kind: int
+end
+
+struct SearchOut
+    query: string
+    case_sensitive: bool
+    running: bool
+    truncated: bool
+    version: int
+    hits: search.Hit[]     // vazio quando o cliente ja tem esta versao
 end
 
 struct FindOut
@@ -88,6 +98,7 @@ struct Frame
     settings: settings.Settings
     list: session.List
     find: FindOut
+    search: SearchOut
 end
 
 // covered: o pedaco [p, q) esta dentro de alguma marca do papel kind?
@@ -196,6 +207,14 @@ func empty_view() -> ViewOut
     return ViewOut(0, 0, CursorOut(0, 0), false, [])
 end
 
+func search_out(s: ref session.Session, client_version: int) -> SearchOut
+    let hits: search.Hit[] = []
+    if client_version != s.search.version then
+        hits = s.search.hits
+    end
+    return SearchOut(s.search.query, s.search.case_sensitive, s.search.running, s.search.truncated, s.search.version, hits)
+end
+
 // title_of e o titulo da janela: nome da aba ativa, marcador de alteracao
 // e o nome do editor. editor.nx compara com o anterior para set_title.
 func title_of(s: ref session.Session) -> string
@@ -210,7 +229,7 @@ func title_of(s: ref session.Session) -> string
     return session.basename(d.path) + mark + " — Noxy Editor"
 end
 
-func build(s: ref session.Session, client_tree_version: int) -> string
+func build(s: ref session.Session, client_tree_version: int, client_search_version: int) -> string
     let tabs: TabOut[] = []
     for i in range(length(s.tabs)) do
         let d: doc.Document = s.tabs[i].editor.doc
@@ -236,7 +255,7 @@ func build(s: ref session.Session, client_tree_version: int) -> string
         right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
         eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current))
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current), search_out(s, client_search_version))
     s.clipboard = ""
     return json_dumps(f)
 end

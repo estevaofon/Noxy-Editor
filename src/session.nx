@@ -10,6 +10,7 @@ use src.runner as runner
 use src.settings as settings
 use src.index as index
 use src.find as find
+use src.search as search
 
 struct Tab
     editor: editing.Editor
@@ -79,7 +80,23 @@ struct Session
     files: string[]     // indice de caminhos relativos (Quick Open)
     files_task: any     // task de index.build em andamento; null parada
     find: find.Find
+    search: Search
 end
+
+// Search e a busca na pasta: a consulta, a task e os resultados; version
+// muda a cada resultado novo (o quadro so manda hits quando o cliente tem
+// outra versao).
+struct Search
+    query: string
+    case_sensitive: bool
+    running: bool
+    task: any
+    hits: search.Hit[]
+    truncated: bool
+    version: int
+end
+
+let SEARCH_LIMIT = 500
 
 // show_panel abre o painel numa aba; uma aba desconhecida e ignorada.
 func show_panel(s: ref Session, tab: string) -> void
@@ -115,6 +132,46 @@ func poll_index(s: ref Session) -> void
     s.files_task = null
 end
 
+// start_search dispara a busca na pasta; a anterior, se ainda rodando, e
+// abandonada (a task termina sozinha e o resultado e ignorado).
+func start_search(s: ref Session, query: string, case_sensitive: bool) -> void
+    s.search.query = query
+    s.search.case_sensitive = case_sensitive
+    s.search.hits = []
+    s.search.truncated = false
+    s.search.version = s.search.version + 1
+    if query == "" then
+        s.search.running = false
+        s.search.task = null
+        return
+    end
+    s.search.running = true
+    s.search.task = spawn_task(search.run, s.root, query, case_sensitive, SEARCH_LIMIT + 1)
+end
+
+func poll_search(s: ref Session) -> void
+    if !s.search.running then
+        return
+    end
+    let env: any = task_await(s.search.task, 0)
+    if env["status"] == "timeout" then
+        return
+    end
+    if env["status"] == "ok" then
+        let hits: search.Hit[] = env["value"]
+        if length(hits) > SEARCH_LIMIT then
+            s.search.truncated = true
+            hits = slice(hits, 0, SEARCH_LIMIT)
+        end
+        s.search.hits = hits
+    else
+        s.message = "falha na busca"
+    end
+    s.search.running = false
+    s.search.task = null
+    s.search.version = s.search.version + 1
+end
+
 func close_list(s: ref Session) -> void
     s.list = List("", "", [], 0)
 end
@@ -141,7 +198,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find())
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0))
 end
 
 func basename(path: string) -> string
