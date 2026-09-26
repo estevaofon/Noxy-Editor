@@ -1,0 +1,37 @@
+// src/minimap.nx — o formato do documento para o minimap: por linha, o
+// comprimento (ate MAX_LEN) e o kind do primeiro token que nao e espaco.
+// Vai no quadro so quando o cliente pede (want_minimap).
+use src.document as doc
+use src.lexer as lexer
+
+let MAX_LEN = 120
+let KINDS: string[] = ["", "keyword", "type", "ident", "call", "number", "string", "comment", "operator", "punct"]
+
+func kind_index(kind: string) -> int
+    for i in range(length(KINDS)) do
+        if KINDS[i] == kind then
+            return i
+        end
+    end
+    return 0
+end
+
+func shape(d: doc.Document) -> int[]
+    let out: int[] = []
+    for line in d.lines do
+        let n: int = length(line)
+        if n > MAX_LEN then
+            n = MAX_LEN
+        end
+        let k: int = 0
+        for t in lexer.tokenize(line) do
+            if t.kind != "space" then
+                k = kind_index(t.kind)
+                break
+            end
+        end
+        append(ref out, n)
+        append(ref out, k)
+    end
+    return out
+end

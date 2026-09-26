@@ -35,10 +35,11 @@ struct Event
     case_sensitive: bool   // da busca (case e palavra reservada)
     search_version: int    // a versao dos resultados da busca na pasta que o cliente tem
     git_version: int       // a versao do status do git que o cliente tem
+    want_minimap: bool     // o cliente quer o formato do arquivo para o minimap
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0, false)
 end
 
 // now e o relogio do dono do estado, em milissegundos. time_now() da
@@ -413,6 +414,10 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         end
     elif e.kind == "find_close" then
         close_find(ref s)
+    elif e.kind == "minimap_goto" then
+        if s.active >= 0 then
+            editing.scroll_to(ref s.tabs[s.active].editor, e.line - s.rows / 2, s.rows)
+        end
     elif e.kind == "search" then
         session.start_search(ref s, e.text, e.case_sensitive)
     elif e.kind == "search_open" then
@@ -473,5 +478,5 @@ func dispatch(s: ref session.Session, body: string, now: int) -> string
     session.poll_index(s)
     session.poll_search(s)
     session.poll_git(s)
-    return frame.build(s, e.tree_version, e.search_version, e.git_version)
+    return frame.build(s, e.tree_version, e.search_version, e.git_version, e.want_minimap)
 end

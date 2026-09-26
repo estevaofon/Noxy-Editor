@@ -479,9 +479,9 @@ func test_frame() -> void
     let s: session.Session = session.new_session(root)
     session.load(ref s)
     s.rows = 2
-    let empty: string = frame.build(ref s, 0, 0, 0)
+    let empty: string = frame.build(ref s, 0, 0, 0, false)
     check("sem aba: tabs vazio e arvore presente", strings.contains(empty, "\"tabs\":[]") && strings.contains(empty, "\"name\":\"b.nx\"") && strings.contains(empty, "\"title\":\"Noxy Editor\""))
-    let same: string = frame.build(ref s, s.tree_version, 0, 0)
+    let same: string = frame.build(ref s, s.tree_version, 0, 0, false)
     check("arvore omitida quando a versao bate", strings.contains(same, "\"tree\":[]"))
 
     session.open_file(ref s, root + "/b.nx")
@@ -491,7 +491,7 @@ func test_frame() -> void
     editing.click(ref s.tabs[0].editor, doc.Pos(0, 1), false, 2)
     editing.drag(ref s.tabs[0].editor, doc.Pos(1, 1), 2)
     s.clipboard = "cp"
-    let f: string = frame.build(ref s, s.tree_version, 0, 0)
+    let f: string = frame.build(ref s, s.tree_version, 0, 0, false)
     check("spans cortados na fronteira da selecao", strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"keyword\",\"s\":false,\"t\":\"l\"}") && strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"keyword\",\"s\":true,\"t\":\"et\"}") && strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"ident\",\"s\":true,\"t\":\"x\"}"))
     check("cursor, has_sel e total", strings.contains(f, "\"cursor\":{\"col\":1,\"line\":1}") && strings.contains(f, "\"has_sel\":true") && strings.contains(f, "\"total\":3"))
     check("aba suja e titulo", strings.contains(f, "\"dirty\":true") && strings.contains(f, "b.nx ● — Noxy Editor"))
@@ -499,7 +499,7 @@ func test_frame() -> void
     check("clipboard vai e e consumido", strings.contains(f, "\"clipboard\":\"cp\"") && s.clipboard == "")
     s.rows = 1
     editing.ensure_visible(ref s.tabs[0].editor, 1)
-    let one: string = frame.build(ref s, s.tree_version, 0, 0)
+    let one: string = frame.build(ref s, s.tree_version, 0, 0, false)
     check("so as linhas visiveis", strings.contains(one, "\"n\":1") && !strings.contains(one, "\"n\":0") && !strings.contains(one, "\"n\":2"))
     check("title_of", frame.title_of(ref s) == "b.nx ● — Noxy Editor")
 
@@ -513,7 +513,7 @@ func test_frame() -> void
     bs.rows = 50
     editing.move_doc_end(ref bs.tabs[0].editor, false, 50)
     let t0: int = events.now()
-    let bf: string = frame.build(ref bs, 1, 0, 0)
+    let bf: string = frame.build(ref bs, 1, 0, 0, false)
     let dt: int = events.now() - t0
     check("arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms", strings.contains(bf, "\"total\":5000") && !strings.contains(bf, "\"n\":100,") && dt < 200)
 end

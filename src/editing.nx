@@ -136,6 +136,11 @@ func scroll(ed: ref Editor, delta: int, rows: int) -> void
     ed.top = t
 end
 
+// scroll_to poe a janela com top em line, dentro dos limites; nao move o cursor.
+func scroll_to(ed: ref Editor, line: int, rows: int) -> void
+    scroll(ed, line - ed.top, rows)
+end
+
 // place poe o cursor em p (clampado); sem shift a ancora acompanha.
 func place(ed: ref Editor, p: doc.Pos, shift: bool, rows: int) -> void
     ed.cursor = doc.clamp(ed.doc, p)

@@ -72,7 +72,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #run-btn { padding: 0 14px; color: var(--k-string); }
 #run-btn:hover { background: var(--bg-hover); }
 
-#editor { position: relative; display: flex; min-height: 0; overflow-x: auto; overflow-y: hidden; font: 14px var(--font-mono); }
+#editor-row { display: flex; min-height: 0; min-width: 0; }
+#editor { position: relative; flex: 1; min-width: 0; display: flex; min-height: 0; overflow-x: auto; overflow-y: hidden; font: 14px var(--font-mono); }
+#minimap { flex: none; width: 90px; height: 100%; background: var(--bg); border-left: 1px solid var(--border); cursor: pointer; }
 #gutter { position: sticky; left: 0; z-index: 2; flex: none; width: 56px; padding-right: 12px; text-align: right; color: var(--fg-dim); background: var(--bg); user-select: none; }
 #text { position: relative; flex: 1; min-width: max-content; padding-right: 48px; }
 .line, .gline { height: var(--line-h); line-height: var(--line-h); white-space: pre; tab-size: 4; }

@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
-    editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
+    editor: $("editor"), minimap: $("minimap"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
     panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
     runStop: $("run-stop"), searchInput: $("search-input"), searchCase: $("search-case"), searchStatus: $("search-status"), searchResults: $("search-results"),
@@ -46,7 +46,7 @@
   let idleTimer = 0;
   function send(ev) {
     if (dead) return;
-    if (EDITS[ev.kind]) { clearTimeout(idleTimer); idleTimer = setTimeout(() => send({ kind: "poll" }), 1500); }
+    if (EDITS[ev.kind]) { clearTimeout(idleTimer); idleTimer = setTimeout(() => send({ kind: "poll" }), 1500); askMinimap(300); }
     if (ev.kind === "scroll") {
       const q = queue.find((e) => e.kind === "scroll");
       if (q) { q.delta += ev.delta; pump(); return; }
@@ -67,6 +67,7 @@
     ev.page = PAGE_ID;
     ev.search_version = searchVersion;
     ev.git_version = git.version;
+    if (needMinimap) { ev.want_minimap = true; needMinimap = false; }
     try {
       const res = await fetch("/event", {
         method: "POST",
@@ -107,6 +108,53 @@
     return c ? " git-" + c : "";
   }
 
+  // minimap: o formato do arquivo vem do Noxy so quando pedido (troca de aba
+  // e, depois de edicoes, no maximo a cada 300 ms); o retangulo da area
+  // visivel sai de top e total, que todo quadro traz
+  let mm = { path: "", lines: [] }, needMinimap = false, mmTimer = 0, mmActive = "";
+  const MM_KINDS = ["", "keyword", "type", "ident", "call", "number", "string", "comment", "operator", "punct"];
+  function askMinimap(delay) {
+    if (mmTimer) return;
+    mmTimer = setTimeout(() => { mmTimer = 0; needMinimap = true; send({ kind: "poll" }); }, delay);
+  }
+  function renderMinimap(f) {
+    const c = els.minimap;
+    if (f.tabs.length === 0) { c.classList.add("hidden"); mmActive = ""; return; }
+    c.classList.remove("hidden");
+    const active = f.tabs.find((t) => t.active);
+    if (f.minimap.path) mm = f.minimap;
+    if (active && active.path !== mmActive) { mmActive = active.path; if (mm.path !== active.path) { needMinimap = true; askMinimap(0); } }
+    const h = c.clientHeight, w = c.clientWidth;
+    if (c.height !== h) c.height = h;
+    if (c.width !== w) c.width = w;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, w, h);
+    const total = Math.max(1, f.view.total);
+    const lh = Math.min(2, h / total);
+    const style = getComputedStyle(document.documentElement);
+    const colors = MM_KINDS.map((k) => k ? style.getPropertyValue("--k-" + k).trim() : style.getPropertyValue("--fg-dim").trim());
+    if (mm.path === (active && active.path)) {
+      ctx.globalAlpha = 0.75;
+      for (let i = 0; i < mm.lines.length / 2; i++) {
+        const len = mm.lines[2 * i], k = mm.lines[2 * i + 1];
+        if (!len) continue;
+        ctx.fillStyle = colors[k] || colors[0];
+        ctx.fillRect(4, i * lh, Math.max(1, len * 0.7), Math.max(1, lh * 0.8));
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = style.getPropertyValue("--sel").trim();
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(0, f.view.top * lh, w, Math.max(4, f.view.lines.length * lh));
+    ctx.globalAlpha = 1;
+    minimapScale = lh;
+  }
+  let minimapScale = 2, mmDrag = false;
+  function minimapGoto(e) {
+    const r = els.minimap.getBoundingClientRect();
+    send({ kind: "minimap_goto", line: Math.floor((e.clientY - r.top) / minimapScale) });
+  }
+
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -125,6 +173,7 @@
     if (f.tree_version !== treeVersion) { treeVersion = f.tree_version; treeRoot = f.root; treeNodes = f.tree; renderTree(treeRoot, treeNodes); }
     else if (gitChanged) renderTree(treeRoot, treeNodes);
     renderView(f);
+    renderMinimap(f);
     els.statusLeft.textContent = f.status.left;
     els.statusRight.textContent = f.status.right;
     els.statusMsg.textContent = f.status.message;
@@ -526,6 +575,14 @@
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
   els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_toggle" }); });
+  els.minimap.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); mmDrag = true;
+    try { els.minimap.setPointerCapture(e.pointerId); } catch (err) { /* sem captura */ }
+    minimapGoto(e);
+  });
+  els.minimap.addEventListener("pointermove", (e) => { if (mmDrag) minimapGoto(e); });
+  els.minimap.addEventListener("pointerup", () => { mmDrag = false; });
   els.runStop.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); send({ kind: "stop" }); });
   for (const tab of els.panelTabs.querySelectorAll(".ptab")) {
     tab.addEventListener("mousedown", (e) => { e.preventDefault(); if (tab.dataset.tab === "search") wantSearchFocus = true; send({ kind: "panel_tab", key: tab.dataset.tab }); });

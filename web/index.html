@@ -16,25 +16,28 @@
       <div id="tabs"></div>
       <button id="run-btn" title="Executar (F5)">▶ Executar</button>
     </div>
-    <div id="editor">
-      <div id="gutter"></div>
-      <div id="text"><div id="cursor" class="hidden"></div></div>
-      <div id="welcome">Abra um arquivo na árvore à esquerda.</div>
-      <div id="findbar" class="hidden">
-        <div class="find-row">
-          <input id="find-input" placeholder="Buscar" autocomplete="off" spellcheck="false">
-          <button id="find-case" title="Diferenciar maiúsculas">Aa</button>
-          <span id="find-count"></span>
-          <button id="find-prev" title="Anterior (Shift+Enter)">↑</button>
-          <button id="find-next" title="Próxima (Enter)">↓</button>
-          <button id="find-close" title="Fechar (Esc)">×</button>
-        </div>
-        <div id="find-replace-row" class="find-row hidden">
-          <input id="find-replace" placeholder="Substituir" autocomplete="off" spellcheck="false">
-          <button id="find-one" title="Substituir a atual (Enter)">Substituir</button>
-          <button id="find-all" title="Substituir todas">Todas</button>
+    <div id="editor-row">
+      <div id="editor">
+        <div id="gutter"></div>
+        <div id="text"><div id="cursor" class="hidden"></div></div>
+        <div id="welcome">Abra um arquivo na árvore à esquerda.</div>
+        <div id="findbar" class="hidden">
+          <div class="find-row">
+            <input id="find-input" placeholder="Buscar" autocomplete="off" spellcheck="false">
+            <button id="find-case" title="Diferenciar maiúsculas">Aa</button>
+            <span id="find-count"></span>
+            <button id="find-prev" title="Anterior (Shift+Enter)">↑</button>
+            <button id="find-next" title="Próxima (Enter)">↓</button>
+            <button id="find-close" title="Fechar (Esc)">×</button>
+          </div>
+          <div id="find-replace-row" class="find-row hidden">
+            <input id="find-replace" placeholder="Substituir" autocomplete="off" spellcheck="false">
+            <button id="find-one" title="Substituir a atual (Enter)">Substituir</button>
+            <button id="find-all" title="Substituir todas">Todas</button>
+          </div>
         </div>
       </div>
+      <canvas id="minimap" class="hidden" width="90" height="100"></canvas>
     </div>
     <div id="output" class="hidden">
       <div id="output-resize" title="Arraste para redimensionar"></div>

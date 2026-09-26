@@ -11,6 +11,7 @@ use src.settings as settings
 use src.find as find
 use src.search as search
 use src.gitinfo as gitinfo
+use src.minimap as minimap
 
 struct SpanOut
     k: string       // kind do token
@@ -35,6 +36,11 @@ struct SearchOut
     truncated: bool
     version: int
     hits: search.Hit[]     // vazio quando o cliente ja tem esta versao
+end
+
+struct MinimapOut
+    path: string    // "" quando nao foi pedido
+    lines: int[]    // comprimento e kind por linha (minimap.shape)
 end
 
 struct FindOut
@@ -101,6 +107,7 @@ struct Frame
     find: FindOut
     search: SearchOut
     git: gitinfo.GitInfo       // status e dirs vazios quando o cliente ja tem esta versao
+    minimap: MinimapOut
 end
 
 // covered: o pedaco [p, q) esta dentro de alguma marca do papel kind?
@@ -217,6 +224,14 @@ func search_out(s: ref session.Session, client_version: int) -> SearchOut
     return SearchOut(s.search.query, s.search.case_sensitive, s.search.running, s.search.truncated, s.search.version, hits)
 end
 
+func minimap_out(s: ref session.Session, want: bool) -> MinimapOut
+    if !want || s.active < 0 then
+        return MinimapOut("", [])
+    end
+    let d: doc.Document = s.tabs[s.active].editor.doc
+    return MinimapOut(d.path, minimap.shape(d))
+end
+
 func git_out(s: ref session.Session, client_version: int) -> gitinfo.GitInfo
     if client_version == s.git.version then
         let g: gitinfo.GitInfo = gitinfo.empty_git()
@@ -240,7 +255,7 @@ func title_of(s: ref session.Session) -> string
     return session.basename(d.path) + mark + " — Noxy Editor"
 end
 
-func build(s: ref session.Session, client_tree_version: int, client_search_version: int, client_git_version: int) -> string
+func build(s: ref session.Session, client_tree_version: int, client_search_version: int, client_git_version: int, want_minimap: bool) -> string
     let tabs: TabOut[] = []
     for i in range(length(s.tabs)) do
         let d: doc.Document = s.tabs[i].editor.doc
@@ -266,7 +281,7 @@ func build(s: ref session.Session, client_tree_version: int, client_search_versi
         right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
         eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current), search_out(s, client_search_version), git_out(s, client_git_version))
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current), search_out(s, client_search_version), git_out(s, client_git_version), minimap_out(s, want_minimap))
     s.clipboard = ""
     return json_dumps(f)
 end

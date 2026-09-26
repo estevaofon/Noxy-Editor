@@ -149,7 +149,7 @@ check("saida do programa aparece", "$ noxy exemplo.nx" in out and "[saiu com" in
 ev("Array.from(document.querySelectorAll('#tree .node')).find(n => n.textContent.includes('longo.nx')).dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle(800)
 check("minimap visivel com 90 px", ev("document.getElementById('minimap').getBoundingClientRect().width") == 90 and not ev("document.getElementById('minimap').classList.contains('hidden')"))
 check("minimap desenhado (pixel da primeira linha nao e transparente)", ev("document.getElementById('minimap').getContext('2d').getImageData(4, 0, 1, 1).data[3]") > 0)
-mm = ev("(() => { const r = document.getElementById('minimap').getBoundingClientRect(); return [r.left + 40, r.top + 290 * 2]; })()")
+mm = ev("(() => { const r = document.getElementById('minimap').getBoundingClientRect(); return [r.left + 40, r.bottom - 6]; })()")
 mouse("mousePressed", mm[0], mm[1]); mouse("mouseReleased", mm[0], mm[1]); settle()
 check("clicar no minimap rola ate a linha", int(ev("document.querySelector('#gutter .gline').textContent")) > 250)
 ev("document.querySelector('.tab.active .close').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
