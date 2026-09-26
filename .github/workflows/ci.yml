@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.25.1
+      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.26.0
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: noxy --sync --locked
       - run: noxy tests/run.nx
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.25.1
+      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.26.0
       - run: Add-Content -Path $env:GITHUB_PATH -Value "$(go env GOPATH)\bin"
       - run: noxy --sync --locked
       - run: noxy tests/run.nx
