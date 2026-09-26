@@ -19,6 +19,7 @@ use src.index as index
 use src.find as find
 use src.search as search
 use src.recovery as recovery
+use src.gitinfo as gitinfo
 
 // cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
 // ~/.config de quem roda
@@ -892,6 +893,63 @@ func test_recovery() -> void
     recovery.remove("/outra/pasta/q.nx")
 end
 
+func git_repo() -> string
+    let repo: string = sys.getcwd() + "/tests/tmp/git"
+    sys.exec("rm -rf '" + repo + "'")
+    io.mkdir(repo + "/proj/sub")
+    write_file(repo + "/proj/a.nx", "let a = 1\n")
+    write_file(repo + "/proj/b.nx", "let b = 1\n")
+    write_file(repo + "/fora.nx", "x\n")
+    sys.exec("cd '" + repo + "' && git init -q -b principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
+    write_file(repo + "/proj/a.nx", "let a = 2\n")
+    write_file(repo + "/proj/sub/novo.nx", "n\n")
+    io.remove(repo + "/proj/b.nx")
+    write_file(repo + "/fora.nx", "y\n")
+    return repo
+end
+
+func test_gitinfo() -> void
+    print("gitinfo")
+    let p: gitinfo.Parsed = gitinfo.parse(" M a.nx\n?? sub/n.nx\nA  c.nx\n D d.nx\nR  old.nx -> e.nx\nMM \"com espaco.nx\"\n", "", "/r")
+    check("codigos do porcelain", p.status["/r/a.nx"] == "M" && p.status["/r/sub/n.nx"] == "?" && p.status["/r/c.nx"] == "A" && p.status["/r/d.nx"] == "D" && p.status["/r/e.nx"] == "R")
+    check("caminho entre aspas", p.status["/r/com espaco.nx"] == "M")
+    check("pastas com alteracao dentro", has_key(p.dirs, "/r/sub") && !has_key(p.dirs, "/r"))
+    let q: gitinfo.Parsed = gitinfo.parse(" M proj/x.nx\n?? outro/y.nx\n?? proj/s/z.nx\n", "proj/", "/r/proj")
+    check("prefixo: so o que esta sob a raiz aberta, relativo a ela", length(keys(q.status)) == 2 && q.status["/r/proj/x.nx"] == "M" && has_key(q.dirs, "/r/proj/s"))
+
+    let repo: string = git_repo()
+    let g: gitinfo.GitInfo = gitinfo.collect(repo + "/proj")
+    check("repositorio: branch", g.available && g.branch == "principal")
+    check("repositorio: modificado, apagado e novo, so dentro da raiz", g.status[repo + "/proj/a.nx"] == "M" && g.status[repo + "/proj/b.nx"] == "D" && g.status[repo + "/proj/sub/novo.nx"] == "?" && !has_key(g.status, repo + "/fora.nx") && has_key(g.dirs, repo + "/proj/sub"))
+    let tmp: string = strings.trim(sys.exec_output("mktemp -d").output)
+    check("fora de um repositorio: indisponivel", !gitinfo.collect(tmp).available)
+    sys.exec("rmdir '" + tmp + "'")
+end
+
+func test_git_session() -> void
+    print("git na sessao")
+    let repo: string = git_repo()
+    let s: session.Session = session.new_session(repo + "/proj")
+    session.load(ref s)
+    session.start_git(ref s)
+    let waited: int = 0
+    let f: string = ""
+    while s.git_task != null && waited < 100 do
+        sys.sleep(20)
+        f = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2,\"git_version\":0}", 1)
+        waited = waited + 1
+    end
+    check("status do git no quadro com a branch", strings.contains(f, "\"branch\":\"principal\"") && strings.contains(f, "\"available\":true"))
+    let same: string = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2,\"git_version\":" + to_str(s.git.version) + "}", 1)
+    check("git omitido quando o cliente tem a versao", !strings.contains(same, "\"branch\":\"principal\"") && strings.contains(same, "\"git\":{"))
+    session.open_file(ref s, repo + "/proj/sub/novo.nx")
+    editing.insert_text(ref s.tabs[0].editor, "x", 10, 1)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"s\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 2)
+    check("salvar dispara a atualizacao do git", s.git_task != null)
+    events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"git_refresh\",\"rows\":20,\"tree_version\":2}", 3)
+    check("comando git_refresh", s.git_task != null)
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -908,4 +966,6 @@ test_index()
 test_find()
 test_search()
 test_recovery()
+test_gitinfo()
+test_git_session()
 report()
