@@ -13,6 +13,7 @@ use src.frame as frame
 use src.events as events
 use src.browser as browser
 use src.settings as settings
+use src.commands as commands
 
 let fails = 0
 let total = 0
@@ -534,6 +535,18 @@ func test_events() -> void
     check("comando theme:nord muda o tema, grava e vai no quadro", s.settings.theme == "nord" && strings.contains(fth, "\"settings\":{\"theme\":\"nord\"}") && settings.load().theme == "nord")
     let fu2: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"zzz\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando desconhecido vira mensagem", strings.contains(fu2, "comando desconhecido: zzz"))
+    let fp: string = events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"p\",\"ctrl\":true,\"shift\":true,\"rows\":20,\"tree_version\":2}", 19)
+    check("ctrl+shift+p abre a paleta com todos os comandos", s.list.kind == "palette" && length(s.list.items) == length(commands.all()) && strings.contains(fp, "\"kind\":\"palette\""))
+    events.dispatch(ref s, "{\"kind\":\"list_filter\",\"text\":\"tema\",\"rows\":20,\"tree_version\":2}", 19)
+    check("filtrar reduz a lista e volta a selecao ao topo", length(s.list.items) == 5 && s.list.selected == 0)
+    events.dispatch(ref s, "{\"kind\":\"list_move\",\"delta\":3,\"rows\":20,\"tree_version\":2}", 19)
+    events.dispatch(ref s, "{\"kind\":\"list_move\",\"delta\":5,\"rows\":20,\"tree_version\":2}", 19)
+    check("mover a selecao para dentro dos limites", s.list.selected == 4)
+    events.dispatch(ref s, "{\"kind\":\"list_pick\",\"index\":-1,\"rows\":20,\"tree_version\":2}", 19)
+    check("escolher executa o comando e fecha a lista", s.settings.theme == "monokai" && s.list.kind == "")
+    events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"palette\",\"rows\":20,\"tree_version\":2}", 19)
+    events.dispatch(ref s, "{\"kind\":\"list_close\",\"rows\":20,\"tree_version\":2}", 19)
+    check("list_close fecha sem executar", s.list.kind == "" && s.settings.theme == "monokai")
     let was_open: bool = s.panel.open
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando panel alterna o painel", s.panel.open != was_open)
@@ -594,6 +607,22 @@ func test_settings() -> void
     io.remove(dir + "/settings.json")
 end
 
+func test_commands() -> void
+    print("commands")
+    let all: commands.Command[] = commands.all()
+    let ids: string[] = []
+    for c in all do
+        append(ref ids, c.id)
+    end
+    check("comandos essenciais existem", contains(ids, "save") && contains(ids, "run") && contains(ids, "stop") && contains(ids, "find") && contains(ids, "quick_open") && contains(ids, "theme:nord") && contains(ids, "quit"))
+    check("todo id e unico", length(ids) == length(all))
+    let temas: commands.Command[] = commands.filter(all, "tema")
+    check("filtro por rotulo, sem diferenciar maiusculas", length(temas) == 5 && temas[0].label == "Tema: Escuro")
+    check("filtro vazio devolve tudo", length(commands.filter(all, "")) == length(all))
+    check("filtro por palavras em qualquer ordem", length(commands.filter(all, "pasta buscar")) == 1)
+    check("atalho no hint", commands.filter(all, "salvar")[0].hint == "Ctrl+S")
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -605,4 +634,5 @@ test_frame()
 test_events()
 test_browser()
 test_settings()
+test_commands()
 report()
