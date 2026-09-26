@@ -512,6 +512,19 @@ func test_events() -> void
     check("poll recolhe a saida no quadro", strings.contains(last, "[saiu com 3]"))
     events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
     check("quit marca quitting", s.quitting)
+
+    // reload no navegador: bye e logo depois init; o quit_if_idle de 3 s
+    // depois nao pode encerrar
+    let q: session.Session = session.new_session(root)
+    session.load(ref q)
+    events.dispatch(ref q, "{\"kind\":\"bye\",\"rows\":20,\"tree_version\":2}", 1000)
+    check("bye marca a flag para o loop", q.bye)
+    events.dispatch(ref q, "{\"kind\":\"init\",\"rows\":20,\"tree_version\":0}", 1200)
+    events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 4000)
+    check("reload: init depois do bye cancela o encerramento", !q.quitting)
+    events.dispatch(ref q, "{\"kind\":\"bye\",\"rows\":20,\"tree_version\":2}", 5000)
+    events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 8000)
+    check("bye sem evento novo encerra", q.quitting)
 end
 
 test_document()

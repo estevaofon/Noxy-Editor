@@ -442,7 +442,7 @@ a string do quadro ou `""` para 400.
 | `modal` | key = id do botão | resposta a um modal |
 | `quit` | | janela fechada (mandado pela routine que espera a extensão) |
 | `bye` | | página descarregando (`pagehide`); o editor sai se nada chegar em 3 s |
-| `quit_if_idle` | | mandado pelo próprio editor 3 s após `bye`: encerra se o último evento tem mais de 2,5 s |
+| `quit_if_idle` | | mandado pelo próprio editor 3 s após `bye`: encerra se nenhum evento chegou depois do `bye` |
 
 Todo evento carrega `rows` e `tree_version` (a versão que o cliente tem).
 Um reload da página manda `bye` e logo depois `init`, então o

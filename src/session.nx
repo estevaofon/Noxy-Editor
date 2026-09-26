@@ -44,6 +44,7 @@ struct Session
     clipboard: string   // preenchido por copy/cut, consumido pelo quadro
     quitting: bool
     bye: bool           // a pagina avisou que esta fechando (pagehide)
+    bye_at: int         // ms do ultimo bye
     last_event: int     // ms do ultimo evento que nao foi quit_if_idle
 end
 
@@ -52,7 +53,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, 0)
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, 0, 0)
 end
 
 func basename(path: string) -> string

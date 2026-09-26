@@ -11,7 +11,6 @@ use src.session as session
 use src.runner as runner
 use src.frame as frame
 
-let IDLE_QUIT_MS = 2500     // bye sem evento novo por este tempo encerra o editor
 
 struct Event
     kind: string
@@ -205,8 +204,11 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         s.quitting = true
     elif e.kind == "bye" then
         s.bye = true
+        s.bye_at = now
     elif e.kind == "quit_if_idle" then
-        if now - s.last_event >= IDLE_QUIT_MS then
+        // chega 3 s depois do bye (editor.nx); um reload manda init nesse
+        // meio tempo, e ai last_event passa de bye_at e o editor fica
+        if s.last_event <= s.bye_at then
             s.quitting = true
         end
     elif e.kind != "init" && e.kind != "poll" then
