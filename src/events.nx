@@ -1,0 +1,233 @@
+// src/events.nx — do JSON do evento ao efeito na sessao. dispatch e o unico
+// ponto de entrada do dono do estado: decodifica num Event de schema fixo,
+// aplica dentro de call_result (um bug vira "erro interno" e a sessao fica
+// como estava, porque apply recebe e devolve a sessao por valor), consulta
+// a execucao e devolve o quadro.
+use strings select ends_with
+use errors select *
+use src.document as doc
+use src.editing as editing
+use src.session as session
+use src.runner as runner
+use src.frame as frame
+
+let IDLE_QUIT_MS = 2500     // bye sem evento novo por este tempo encerra o editor
+
+struct Event
+    kind: string
+    key: string         // KeyboardEvent.key em minusculas; id do botao no modal
+    ctrl: bool
+    shift: bool
+    alt: bool
+    text: string
+    line: int
+    col: int            // -1 no click = clique no gutter
+    delta: int
+    path: string
+    index: int
+    rows: int
+    tree_version: int   // a versao da arvore que o cliente tem
+end
+
+func empty_event() -> Event
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0)
+end
+
+// trivial: eventos que nao apagam a mensagem de status.
+func trivial(kind: string) -> bool
+    return kind == "poll" || kind == "scroll" || kind == "drag" || kind == "quit_if_idle" || kind == "bye"
+end
+
+// run_active salva a aba ativa se preciso e dispara a execucao.
+func run_active(s: ref session.Session) -> void
+    if s.active < 0 then
+        s.message = "nenhum arquivo aberto"
+        return
+    end
+    let path: string = s.tabs[s.active].editor.doc.path
+    if !ends_with(path, ".nx") then
+        s.message = "so arquivos .nx"
+        return
+    end
+    if s.tabs[s.active].editor.doc.dirty then
+        session.save(s)
+        if s.tabs[s.active].editor.doc.dirty then
+            return
+        end
+    end
+    let msg: string = runner.start(ref s.run, s.root, session.relative(s.root, path))
+    if msg != "" then
+        s.message = msg
+    end
+end
+
+func handle_key(s: ref session.Session, e: Event, now: int) -> void
+    if e.ctrl && e.key == "q" then
+        session.request_quit(s)
+        return
+    end
+    if e.key == "f5" then
+        run_active(s)
+        return
+    end
+    if e.key == "escape" && s.modal.text != "" then
+        session.answer_modal(s, "cancel")
+        return
+    end
+    if s.active < 0 then
+        return
+    end
+    let rows: int = s.rows
+    let ed: ref editing.Editor = ref s.tabs[s.active].editor
+    if e.ctrl then
+        if e.key == "s" then
+            session.save(s)
+        elif e.key == "z" && e.shift then
+            editing.redo(ed, rows)
+        elif e.key == "z" then
+            editing.undo(ed, rows)
+        elif e.key == "y" then
+            editing.redo(ed, rows)
+        elif e.key == "a" then
+            editing.select_all(ed)
+        elif e.key == "w" then
+            session.close_tab(s, s.active)
+        elif e.key == "/" then
+            editing.toggle_comment(ed, rows, now)
+        elif e.key == "arrowleft" then
+            editing.move_word_left(ed, e.shift, rows)
+        elif e.key == "arrowright" then
+            editing.move_word_right(ed, e.shift, rows)
+        elif e.key == "home" then
+            editing.move_doc_start(ed, e.shift, rows)
+        elif e.key == "end" then
+            editing.move_doc_end(ed, e.shift, rows)
+        end
+        return
+    end
+    if e.key == "arrowleft" then
+        editing.move_left(ed, e.shift, rows)
+    elif e.key == "arrowright" then
+        editing.move_right(ed, e.shift, rows)
+    elif e.key == "arrowup" then
+        editing.move_up(ed, e.shift, rows)
+    elif e.key == "arrowdown" then
+        editing.move_down(ed, e.shift, rows)
+    elif e.key == "home" then
+        editing.move_home(ed, e.shift, rows)
+    elif e.key == "end" then
+        editing.move_end(ed, e.shift, rows)
+    elif e.key == "pageup" then
+        editing.page_up(ed, e.shift, rows)
+    elif e.key == "pagedown" then
+        editing.page_down(ed, e.shift, rows)
+    elif e.key == "enter" then
+        editing.newline(ed, rows, now)
+    elif e.key == "backspace" then
+        editing.backspace(ed, rows, now)
+    elif e.key == "delete" then
+        editing.delete_forward(ed, rows, now)
+    elif e.key == "tab" then
+        editing.tab(ed, e.shift, rows, now)
+    elif e.key == "escape" then
+        ed.anchor = ed.cursor
+    end
+end
+
+// apply recebe e devolve a sessao por valor: se levantar erro, dispatch
+// descarta o resultado e a sessao continua como estava.
+func apply(s: session.Session, e: Event, now: int) -> session.Session
+    if e.rows > 0 && e.rows != s.rows then
+        s.rows = e.rows
+        if s.active >= 0 then
+            editing.ensure_visible(ref s.tabs[s.active].editor, s.rows)
+        end
+    end
+    if !trivial(e.kind) then
+        s.message = ""
+    end
+    if e.kind != "quit_if_idle" then
+        s.last_event = now
+    end
+    if e.kind == "key" then
+        handle_key(ref s, e, now)
+    elif e.kind == "text" then
+        if s.active >= 0 then
+            editing.insert_text(ref s.tabs[s.active].editor, e.text, s.rows, now)
+        end
+    elif e.kind == "paste" then
+        if s.active >= 0 then
+            editing.paste(ref s.tabs[s.active].editor, e.text, s.rows, now)
+        end
+    elif e.kind == "copy" then
+        if s.active >= 0 then
+            s.clipboard = editing.copy(s.tabs[s.active].editor)
+        end
+    elif e.kind == "cut" then
+        if s.active >= 0 then
+            s.clipboard = editing.cut(ref s.tabs[s.active].editor, s.rows, now)
+        end
+    elif e.kind == "click" then
+        if s.active >= 0 then
+            if e.col < 0 then
+                editing.select_line(ref s.tabs[s.active].editor, e.line, s.rows)
+            else
+                editing.click(ref s.tabs[s.active].editor, doc.Pos(e.line, e.col), e.shift, s.rows)
+            end
+        end
+    elif e.kind == "drag" then
+        if s.active >= 0 then
+            editing.drag(ref s.tabs[s.active].editor, doc.Pos(e.line, e.col), s.rows)
+        end
+    elif e.kind == "dblclick" then
+        if s.active >= 0 then
+            editing.select_word_at(ref s.tabs[s.active].editor, doc.Pos(e.line, e.col), s.rows)
+        end
+    elif e.kind == "scroll" then
+        if s.active >= 0 then
+            editing.scroll(ref s.tabs[s.active].editor, e.delta, s.rows)
+        end
+    elif e.kind == "tab_select" then
+        if e.index >= 0 && e.index < length(s.tabs) then
+            s.active = e.index
+        end
+    elif e.kind == "tab_close" then
+        session.close_tab(ref s, e.index)
+    elif e.kind == "tree_toggle" then
+        session.toggle_dir(ref s, e.path)
+    elif e.kind == "tree_open" then
+        session.open_file(ref s, e.path)
+    elif e.kind == "run" then
+        run_active(ref s)
+    elif e.kind == "modal" then
+        session.answer_modal(ref s, e.key)
+    elif e.kind == "quit" then
+        s.quitting = true
+    elif e.kind == "bye" then
+        s.bye = true
+    elif e.kind == "quit_if_idle" then
+        if now - s.last_event >= IDLE_QUIT_MS then
+            s.quitting = true
+        end
+    elif e.kind != "init" && e.kind != "poll" then
+        s.message = "evento desconhecido: " + e.kind
+    end
+    return s
+end
+
+// dispatch devolve o quadro, ou "" quando body nao e um evento valido.
+func dispatch(s: ref session.Session, body: string, now: int) -> string
+    let e: Event = empty_event()
+    if !json_loads(body, ref e) then
+        return ""
+    end
+    let r = call_result(apply, *s, e, now)
+    if r.ok then
+        *s = r.value
+    else
+        eprint("erro interno no evento " + e.kind + ": " + r.failure.message)
+        s.message = "erro interno: " + r.failure.message
+    end
+    runner.poll(ref s.run)
+    return frame.build(s, e.tree_version)
+end

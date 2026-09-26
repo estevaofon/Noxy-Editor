@@ -10,6 +10,7 @@ use src.runner as runner
 use strings
 use src.session as session
 use src.frame as frame
+use src.events as events
 
 let fails = 0
 let total = 0
@@ -462,6 +463,57 @@ func test_frame() -> void
     check("arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms", strings.contains(bf, "\"total\":5000") && !strings.contains(bf, "\"n\":100,") && dt < 200)
 end
 
+func test_events() -> void
+    print("events")
+    let root: string = tmp_root()
+    let s: session.Session = session.new_session(root)
+    session.load(ref s)
+    check("json invalido devolve vazio", events.dispatch(ref s, "{nope", 1) == "")
+    check("campo com tipo errado devolve vazio", events.dispatch(ref s, "{\"kind\":\"click\",\"line\":\"x\"}", 1) == "")
+    let f0: string = events.dispatch(ref s, "{\"kind\":\"init\",\"rows\":20,\"tree_version\":0}", 1)
+    check("init guarda rows e devolve a arvore", s.rows == 20 && strings.contains(f0, "\"name\":\"sub\""))
+    events.dispatch(ref s, "{\"kind\":\"tree_open\",\"path\":\"" + root + "/b.nx\",\"rows\":20,\"tree_version\":2}", 2)
+    check("tree_open abre a aba", s.active == 0)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"end\",\"rows\":20,\"tree_version\":2}", 3)
+    events.dispatch(ref s, "{\"kind\":\"text\",\"text\":\"é\",\"rows\":20,\"tree_version\":2}", 4)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"enter\",\"rows\":20,\"tree_version\":2}", 5)
+    let d: doc.Document = s.tabs[0].editor.doc
+    check("end, texto e enter", d.lines[0] == "let b = 1é" && length(d.lines) == 3)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"z\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 6)
+    check("ctrl+z", length(s.tabs[0].editor.doc.lines) == 2)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"a\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 7)
+    let fc: string = events.dispatch(ref s, "{\"kind\":\"copy\",\"rows\":20,\"tree_version\":2}", 8)
+    check("ctrl+a e copy devolvem o clipboard", strings.contains(fc, "\"clipboard\":\"let b = 1é\\n\""))
+    events.dispatch(ref s, "{\"kind\":\"click\",\"line\":0,\"col\":-1,\"rows\":20,\"tree_version\":2}", 9)
+    check("click no gutter seleciona a linha", editing.copy(s.tabs[0].editor) == "let b = 1é\n")
+    let fu: string = events.dispatch(ref s, "{\"kind\":\"zzz\",\"rows\":20,\"tree_version\":2}", 10)
+    check("kind desconhecido vira mensagem", strings.contains(fu, "evento desconhecido: zzz"))
+    events.dispatch(ref s, "{\"kind\":\"tab_select\",\"index\":7,\"rows\":20,\"tree_version\":2}", 11)
+    check("tab_select fora do intervalo e ignorado", s.active == 0)
+    events.dispatch(ref s, "{\"kind\":\"tab_close\",\"index\":0,\"rows\":20,\"tree_version\":2}", 12)
+    check("tab_close de aba suja abre modal", s.modal.text != "")
+    events.dispatch(ref s, "{\"kind\":\"modal\",\"key\":\"discard\",\"rows\":20,\"tree_version\":2}", 13)
+    check("resposta do modal fecha a aba", length(s.tabs) == 0 && s.modal.text == "")
+    let fr: string = events.dispatch(ref s, "{\"kind\":\"run\",\"rows\":20,\"tree_version\":2}", 14)
+    check("run sem aba avisa", strings.contains(fr, "nenhum arquivo aberto"))
+    events.dispatch(ref s, "{\"kind\":\"tree_open\",\"path\":\"" + root + "/a.txt\",\"rows\":20,\"tree_version\":2}", 15)
+    let ft: string = events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"rows\":20,\"tree_version\":2}", 16)
+    check("f5 em .txt recusa", strings.contains(ft, "so arquivos .nx"))
+    events.dispatch(ref s, "{\"kind\":\"tree_open\",\"path\":\"" + root + "/hello.nx\",\"rows\":20,\"tree_version\":2}", 17)
+    let f5: string = events.dispatch(ref s, "{\"kind\":\"run\",\"rows\":20,\"tree_version\":2}", 18)
+    check("run dispara e o quadro mostra running", s.run.running && strings.contains(f5, "\"running\":true"))
+    let waited: int = 0
+    let last: string = ""
+    while s.run.running && waited < 100 do
+        sys.sleep(50)
+        last = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 19)
+        waited = waited + 1
+    end
+    check("poll recolhe a saida no quadro", strings.contains(last, "[saiu com 3]"))
+    events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
+    check("quit marca quitting", s.quitting)
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -470,4 +522,5 @@ test_editing_text()
 test_runner()
 test_session()
 test_frame()
+test_events()
 report()
