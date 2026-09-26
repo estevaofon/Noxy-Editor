@@ -371,7 +371,8 @@ Enter para abrir outro]`. Um terminal por vez.
 ## 13. Eventos e quadro (o que muda)
 
 Campos novos em `Event`: `cols: int`, `want_minimap: bool`,
-`minimap_version: int`, `git_version: int`, `case: bool`.
+`minimap_version: int`, `git_version: int`, `case_sensitive: bool` (`case`
+é palavra reservada em Noxy).
 
 | kind | campos | efeito |
 |---|---|---|
@@ -379,10 +380,10 @@ Campos novos em `Event`: `cols: int`, `want_minimap: bool`,
 | `panel_toggle` | | abre ou fecha o painel |
 | `stop` | | interrompe a execução |
 | `find_open` | key = "replace" para Ctrl+H | abre a barra |
-| `find` | text, case | consulta nova |
+| `find` | text, case_sensitive | consulta nova |
 | `find_next`, `find_prev`, `find_close` | | |
 | `replace_one`, `replace_all` | text = substituto | |
-| `search` | text, case | busca na pasta |
+| `search` | text, case_sensitive | busca na pasta |
 | `search_open` | path, line, col | abre resultado |
 | `quick_open`, `palette` | | abre a lista |
 | `list_filter` | text | |
