@@ -2,6 +2,8 @@
 //     noxy tests/run.nx      (a partir da raiz do projeto)
 use sys
 use src.document as doc
+use src.lexer as lexer
+use io
 
 let fails = 0
 let total = 0
@@ -57,5 +59,48 @@ func test_document() -> void
     check("ordered poe a menor primeiro", r.start.line == 0 && r.stop.line == 2)
 end
 
+func kinds(line: string) -> string
+    let out: string = ""
+    for t in lexer.tokenize(line) do
+        if t.kind != "space" then
+            out = out + t.kind + " "
+        end
+    end
+    return out
+end
+
+func test_lexer() -> void
+    print("lexer")
+    check("keyword type ident operator number", kinds("let x: int = 10") == "keyword ident punct type operator number ")
+    check("call vs ident", kinds("print(x)") == "call punct ident punct ")
+    check("struct e type", kinds("Pos(1, 2)") == "type punct number punct number punct ")
+    check("comentario ate o fim", kinds("x // a \"b\"") == "ident comment ")
+    check("string com escape", kinds("\"a\\\"b\" + 'c'") == "string operator string ")
+    check("string aberta vai ate o fim", kinds("\"abc") == "string ")
+    check("f-string com aspas dentro de chaves", kinds("f\"n = {fmt(\"%d\", n)}\" + 1") == "string operator number ")
+    check("bytes literal", kinds("b\"hi\"") == "string ")
+    check("float e hex", kinds("3.14 0xFF 7") == "number number number ")
+    check("operadores de dois caracteres", kinds("a -> b == c && d") == "ident operator ident operator ident operator ident ")
+    check("identificador unicode", kinds("ação = 1") == "ident operator number ")
+    check("caractere solto vira punct", kinds("@") == "punct ")
+    check("tab e espaco", lexer.tokenize("\tx")[0].kind == "space")
+
+    // a invariante vale para todo modulo do projeto, os que existem agora e
+    // os que vierem
+    let broken = 0
+    for name in io.list_dir("src").data do
+        let f: io.File = io.open("src/" + name, "r")
+        let r: io.IOLinesResult = io.read_lines(f)
+        io.close(f)
+        for line in r.data do
+            if lexer.join_tokens(lexer.tokenize(line)) != line then
+                broken = broken + 1
+            end
+        end
+    end
+    check("invariante: tokens concatenados devolvem a linha, em todo src/", broken == 0)
+end
+
 test_document()
+test_lexer()
 report()
