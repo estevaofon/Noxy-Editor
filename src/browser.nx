@@ -1,0 +1,88 @@
+// src/browser.nx — abre uma URL num navegador em modo app (janela sem barra
+// de endereco) ou no navegador padrao. O token do editor nao pode ir na
+// linha de comando (ps e /proc mostram os argumentos a qualquer usuario da
+// maquina), entao write_redirect grava uma pagina de redirecionamento num
+// diretorio temporario so do usuario (mktemp -d cria com 0700) e o
+// lancador passa o caminho dela em vez da URL.
+use sys
+use io
+use strings select replace, trim, starts_with, codes, substring
+
+let BROWSERS: string[] = ["google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"]
+
+func has_command(name: string) -> bool
+    return sys.exec("command -v " + name + " >/dev/null 2>&1").exit_code == 0
+end
+
+func shell_quote(s: string) -> string
+    return "'" + replace(s, "'", "'\\''") + "'"
+end
+
+// dir_of e o diretorio de um caminho; "." quando nao ha barra.
+func dir_of(path: string) -> string
+    let cs: int[] = codes(path)
+    let last: int = -1
+    for i in range(length(cs)) do
+        if cs[i] == 47 then
+            last = i
+        end
+    end
+    if last < 0 then
+        return "."
+    end
+    if last == 0 then
+        return "/"
+    end
+    return substring(path, 0, last)
+end
+
+// write_redirect grava a pagina que leva a url e devolve o caminho dela;
+// "" se nao conseguiu criar o diretorio ou o arquivo.
+func write_redirect(url: string) -> string
+    let r: sys.SysResult = sys.exec_output("mktemp -d")
+    if !r.ok then
+        return ""
+    end
+    let dir: string = trim(r.output)
+    if !starts_with(dir, "/") then
+        return ""
+    end
+    let path: string = dir + "/noxy-editor.html"
+    let f: io.File = io.open(path, "w")
+    if !f.open then
+        return ""
+    end
+    io.write(f, "<!doctype html>\n<meta charset=\"utf-8\">\n<meta http-equiv=\"refresh\" content=\"0;url=" + url + "\">\n<title>Noxy Editor</title>\n")
+    io.close(f)
+    return path
+end
+
+// cleanup remove a pagina de redirecionamento e o diretorio dela.
+func cleanup(path: string) -> void
+    if path == "" then
+        return
+    end
+    io.remove(path)
+    sys.exec("rmdir " + shell_quote(dir_of(path)) + " 2>/dev/null")
+end
+
+// open_app abre target (uma URL ou file://...) e devolve "app" (janela sem
+// barra), "browser" ou "".
+func open_app(target: string) -> string
+    let q: string = shell_quote(target)
+    for b in BROWSERS do
+        if has_command(b) then
+            sys.exec(b + " --app=" + q + " >/dev/null 2>&1 &")
+            return "app"
+        end
+    end
+    if sys.os() == "darwin" then
+        sys.exec("open " + q)
+        return "browser"
+    end
+    if has_command("xdg-open") then
+        sys.exec("xdg-open " + q + " >/dev/null 2>&1 &")
+        return "browser"
+    end
+    return ""
+end

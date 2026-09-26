@@ -147,6 +147,17 @@ key("z", mods=2)
 # screenshot
 shot = ws.call("Page.captureScreenshot", {"format": "png"})["data"]
 open(os.path.join("tests", "tmp", "web_screenshot.png"), "wb").write(base64.b64decode(shot))
+# fallback: a pagina de redirecionamento (token fora da linha de comando)
+# leva ao editor; a pagina anterior manda bye no pagehide e o init novo
+# cancela o encerramento
+helper = os.path.join("tests", "tmp", "web_redir.nx")   # fora da pasta de demo, que a arvore lista
+open(helper, "w").write("use src.browser as browser\nuse sys\nprint(browser.write_redirect(sys.argv()[2]))\n")
+page = subprocess.run(["noxy", helper, url], capture_output=True, text=True).stdout.strip()
+check("write_redirect devolve um caminho", page.startswith("/"))
+ws.call("Page.navigate", {"url": "file://" + page}); settle(2000)
+check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 3)
+time.sleep(3.5)
+check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 3)
 chrome.terminate()
 editor.terminate()
 print(f"\n{'FALHOU' if fails else 'OK'}: {fails} falhas")

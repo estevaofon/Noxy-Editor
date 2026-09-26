@@ -1,42 +1,16 @@
 // src/launch.nx — abre a janela do editor. Primeiro a extensao noxy_webview
-// (janela nativa); se ela falhar — sem binario, sem WebKitGTK, processo
-// morto — um navegador em modo app (janela sem barra de endereco), e por
-// ultimo o navegador padrao. mode guarda o que deu certo.
+// (janela nativa); se ela falhar em runtime — sem WebKitGTK na maquina,
+// processo que nao sobe ou morre — um navegador em modo app, e por ultimo o
+// navegador padrao (src/browser). No fallback a URL com o token vai numa
+// pagina de redirecionamento privada, nunca na linha de comando. mode
+// guarda o que deu certo.
 use sys
-use strings select replace
 use errors select *
+use src.browser as browser
 use github_com.estevaofon.noxy_webview.noxy_webview as webview
 
-let BROWSERS: string[] = ["google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"]
 let mode: string = ""       // "webview", "app", "browser" ou ""
-
-func has_command(name: string) -> bool
-    return sys.exec("command -v " + name + " >/dev/null 2>&1").exit_code == 0
-end
-
-func shell_quote(s: string) -> string
-    return "'" + replace(s, "'", "'\\''") + "'"
-end
-
-// open_browser devolve "app" (janela sem barra), "browser" ou "".
-func open_browser(url: string) -> string
-    let q: string = shell_quote(url)
-    for b in BROWSERS do
-        if has_command(b) then
-            sys.exec(b + " --app=" + q + " >/dev/null 2>&1 &")
-            return "app"
-        end
-    end
-    if sys.os() == "darwin" then
-        sys.exec("open " + q)
-        return "browser"
-    end
-    if has_command("xdg-open") then
-        sys.exec("xdg-open " + q + " >/dev/null 2>&1 &")
-        return "browser"
-    end
-    return ""
-end
+let redirect: string = ""   // a pagina de redirecionamento do fallback
 
 // open_window tenta a extensao e cai para o navegador; devolve o modo.
 func open_window(url: string) -> string
@@ -46,7 +20,14 @@ func open_window(url: string) -> string
         return mode
     end
     eprint("janela pela extensao indisponivel: " + r.failure.message + "; abrindo no navegador")
-    mode = open_browser(url)
+    let target: string = url
+    redirect = browser.write_redirect(url)
+    if redirect != "" then
+        target = "file://" + redirect
+    else
+        eprint("nao consegui criar a pagina de redirecionamento; a URL vai na linha de comando")
+    end
+    mode = browser.open_app(target)
     return mode
 end
 
@@ -71,4 +52,6 @@ func close_window() -> void
     if mode == "webview" then
         call_result(webview.close)
     end
+    browser.cleanup(redirect)
+    redirect = ""
 end
