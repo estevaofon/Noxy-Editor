@@ -335,17 +335,28 @@
   // altura lembrada por navegador (localStorage e conveniencia, nunca estado)
   const OUTPUT_H_KEY = "noxy-editor.output-h";
   let resizing = null;
+  let outputH = 0;   // altura atual do painel em px; 0 = ainda nao dimensionado
   function clampOutputHeight(h) {
     const max = Math.floor(els.main.clientHeight * 0.8);
     return Math.max(100, Math.min(Math.round(h), max));
   }
-  function setOutputHeight(h) { els.output.style.height = clampOutputHeight(h) + "px"; }
+  // a altura vive na variavel da grade: o editor (1fr) encolhe na mesma medida
+  function setOutputHeight(h) {
+    outputH = clampOutputHeight(h);
+    els.main.style.setProperty("--output-h", outputH + "px");
+  }
   function showOutput(on) {
-    if (!on) { els.output.classList.add("hidden"); return; }
-    if (!els.output.style.height) {
+    if (!on) {
+      els.output.classList.add("hidden");
+      els.main.style.setProperty("--output-h", "0px");
+      return;
+    }
+    if (outputH === 0) {
       let saved = null;
       try { saved = parseInt(localStorage.getItem(OUTPUT_H_KEY), 10); } catch (err) { saved = null; }
       setOutputHeight(saved > 0 ? saved : els.main.clientHeight * 0.35);
+    } else {
+      setOutputHeight(outputH);
     }
     els.output.classList.remove("hidden");
   }
@@ -353,27 +364,33 @@
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
   els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); showOutput(false); });
-  // o divisor e a barra "Saida" inteira redimensionam: na janela WebKitGTK a
-  // barra de rolagem horizontal do editor e sobreposta e captura o mouse
-  // perto da borda, entao so o divisor fino nao bastava
+  // o divisor e a barra "Saida" inteira redimensionam, com Pointer Events e
+  // captura do ponteiro: uma vez iniciado, o arraste segue o divisor mesmo
+  // passando pela barra de rolagem do editor ou saindo da janela
   function startResize(e) {
     if (e.button !== 0 || e.target.closest("#output-close")) return;
     e.preventDefault();
-    resizing = { y: e.clientY, h: els.output.getBoundingClientRect().height };
+    resizing = { y: e.clientY, h: outputH, id: e.pointerId, el: e.currentTarget };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* sem captura: o movimento ainda chega enquanto o ponteiro estiver sobre o alvo */ }
     els.output.classList.add("resizing");
   }
-  els.outputResize.addEventListener("mousedown", startResize);
-  els.outputHead.addEventListener("mousedown", startResize);
-  document.addEventListener("mousemove", (e) => {
+  function moveResize(e) {
     if (!resizing) return;
     setOutputHeight(resizing.h + (resizing.y - e.clientY));
-  });
-  document.addEventListener("mouseup", () => {
+  }
+  function endResize(e) {
     if (!resizing) return;
+    try { resizing.el.releasePointerCapture(resizing.id); } catch (err) { /* ja liberado */ }
     resizing = null;
     els.output.classList.remove("resizing");
-    try { localStorage.setItem(OUTPUT_H_KEY, String(Math.round(els.output.getBoundingClientRect().height))); } catch (err) { /* sem storage: so nao lembra */ }
-  });
+    try { localStorage.setItem(OUTPUT_H_KEY, String(outputH)); } catch (err) { /* sem storage: so nao lembra */ }
+  }
+  for (const el of [els.outputResize, els.outputHead]) {
+    el.addEventListener("pointerdown", startResize);
+    el.addEventListener("pointermove", moveResize);
+    el.addEventListener("pointerup", endResize);
+    el.addEventListener("pointercancel", endResize);
+  }
   new ResizeObserver(() => {
     const r = rowsNow();
     if (r !== rows) { rows = r; send({ kind: "poll" }); }

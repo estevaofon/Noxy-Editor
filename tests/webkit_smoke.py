@@ -1,0 +1,104 @@
+# tests/webkit_smoke.py — o layout e o arraste do painel de saida no motor
+# da janela de verdade (WebKitGTK, o mesmo da extensao), com eventos de mouse
+# entregues pelo GTK. Precisa de PyGObject com WebKit2 4.1 e roda sob X11 ou
+# XWayland; abre uma janela por alguns segundos.
+#     GDK_BACKEND=x11 python3 tests/webkit_smoke.py      (a partir da raiz)
+import gi, os, re, sys, time, subprocess, json, shutil
+gi.require_version("Gtk", "3.0"); gi.require_version("Gdk", "3.0"); gi.require_version("WebKit2", "4.1")
+from gi.repository import Gtk, Gdk, WebKit2, GLib
+
+demo = os.path.join("tests", "tmp", "webkit"); os.makedirs(demo, exist_ok=True)
+open(os.path.join(demo, "longo.nx"), "w").write("".join(f"let v{i}: int = {i}   // " + "x" * 200 + "\n" for i in range(120)) + "print(\"fim\")\n")
+log = os.path.join("tests", "tmp", "webkit_editor.log")
+editor = subprocess.Popen(["noxy", "editor.nx", demo], env=dict(os.environ, NOXY_EDITOR_NO_WINDOW="1"), stdout=subprocess.DEVNULL, stderr=open(log, "w"))
+url = None
+for _ in range(50):
+    m = re.search(r"http://127\.0\.0\.1:\d+/\?t=[a-z0-9-]+", open(log).read())
+    if m: url = m.group(0); break
+    time.sleep(0.1)
+
+fails = 0
+def check(name, cond):
+    global fails
+    print(("  ok   " if cond else "FAIL   ") + name)
+    if not cond: fails += 1
+
+W, H = 1200, 800
+win = Gtk.Window(title="webkit_smoke"); win.set_default_size(W, H); win.set_resizable(False)
+wv = WebKit2.WebView(); win.add(wv); win.show_all()
+def js(expr, cb):
+    def done(w, res):
+        try: v = w.run_javascript_finish(res).get_js_value().to_string()
+        except Exception as e: v = "ERR " + str(e)
+        cb(v)
+    wv.run_javascript(expr, None, done)
+def later(ms, f): GLib.timeout_add(ms, lambda: (f(), False)[1])
+def gwin(): return wv.get_window()
+
+# eventos sinteticos entregues pelo GTK ao widget: o WebKit os converte em
+# eventos de mouse e faz o hit-test no processo web, como com o mouse real
+_keep = []
+def _dev(): return Gdk.Display.get_default().get_default_seat().get_pointer()
+def _fill(ev, kind, x, y):
+    w = gwin(); ok, ox, oy = w.get_origin(); e = getattr(ev, kind)
+    e.window = w; e.send_event = True; e.time = int(GLib.get_monotonic_time() / 1000)
+    e.x = float(x); e.y = float(y); e.x_root = float(ox + x); e.y_root = float(oy + y)
+    e.device = _dev(); ev.set_device(_dev()); ev.set_source_device(_dev()); _keep.append(ev)
+def move(x, y, held):
+    ev = Gdk.Event.new(Gdk.EventType.MOTION_NOTIFY); _fill(ev, "motion", x, y)
+    ev.motion.state = Gdk.ModifierType.BUTTON1_MASK if held else Gdk.ModifierType(0); Gtk.main_do_event(ev)
+def button(down, x, y):
+    ev = Gdk.Event.new(Gdk.EventType.BUTTON_PRESS if down else Gdk.EventType.BUTTON_RELEASE); _fill(ev, "button", x, y)
+    ev.button.button = 1; ev.button.state = Gdk.ModifierType(0) if down else Gdk.ModifierType.BUTTON1_MASK; Gtk.main_do_event(ev)
+def click(x, y, done):
+    move(x, y, False); later(60, lambda: button(True, x, y)); later(120, lambda: button(False, x, y)); later(200, done)
+def drag(x, y, dy, done):
+    move(x, y, False); later(60, lambda: button(True, x, y))
+    for i, f in enumerate([0.2, 0.4, 0.6, 0.8, 1.0]):
+        later(120 + i * 50, (lambda ff: (lambda: move(x, y + dy * ff, True)))(f))
+    later(420, lambda: button(False, x, y + dy)); later(800, done)
+
+LAYOUT = "JSON.stringify({inner: innerHeight, editorH: document.getElementById('editor').getBoundingClientRect().height, rows: document.querySelectorAll('#text .line').length, outH: document.getElementById('output').getBoundingClientRect().height, outBottom: document.getElementById('output').getBoundingClientRect().bottom, statusBottom: document.getElementById('status').getBoundingClientRect().bottom, hidden: document.getElementById('output').classList.contains('hidden'), sw: document.getElementById('editor').scrollWidth, cw: document.getElementById('editor').clientWidth})"
+def center(sel): return f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return JSON.stringify([r.left + Math.min(60, r.width / 2), r.top + r.height / 2]); }})()"
+st = {}
+def fits(l): return l["statusBottom"] <= l["inner"] + 0.5 and l["outBottom"] <= l["inner"] + 0.5 and abs(l["editorH"] - (l["inner"] - 36 - l["outH"] - 24)) < 1.5
+
+def s_open():
+    js("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); 'ok'", lambda _: later(600, s_before))
+def s_before():
+    def got(v):
+        l = json.loads(v); st["before"] = l
+        check("arquivo largo aberto, com rolagem horizontal", l["rows"] > 20 and l["sw"] > l["cw"])
+        js(center("#run-btn"), lambda c: click(*json.loads(c), lambda: later(3500, s_after_run)))
+    js(LAYOUT, got)
+def s_after_run():
+    def got(v):
+        l = json.loads(v); st["run"] = l
+        check("F5 abre o painel", not l["hidden"] and l["outH"] > 100)
+        check("painel e status cabem na janela e o editor encolheu (editor %d, painel %d, janela %d)" % (l["editorH"], l["outH"], l["inner"]), fits(l))
+        check("linhas visiveis diminuiram (%d -> %d)" % (st["before"]["rows"], l["rows"]), l["rows"] < st["before"]["rows"])
+        js(center("#output-head"), lambda c: drag(*json.loads(c), -150, s_after_head))
+    js(LAYOUT, got)
+def s_after_head():
+    def got(v):
+        l = json.loads(v); st["head"] = l
+        check("arrastar pela barra SAIDA cresce 150 px (%d -> %d)" % (st["run"]["outH"], l["outH"]), abs((l["outH"] - st["run"]["outH"]) - 150) < 2)
+        check("layout continua cabendo apos o arraste", fits(l) and l["rows"] < st["run"]["rows"])
+        js(center("#output-resize"), lambda c: drag(*json.loads(c), 60, s_after_grip))
+    js(LAYOUT, got)
+def s_after_grip():
+    def got(v):
+        l = json.loads(v)
+        check("arrastar pelo divisor para baixo encolhe 60 px (%d -> %d)" % (st["head"]["outH"], l["outH"]), abs((st["head"]["outH"] - l["outH"]) - 60) < 2)
+        check("layout continua cabendo", fits(l))
+        finish()
+    js(LAYOUT, got)
+def finish():
+    editor.terminate(); Gtk.main_quit()
+def on_load(w, ev):
+    if ev == WebKit2.LoadEvent.FINISHED: later(1200, s_open)
+wv.connect("load-changed", on_load); wv.load_uri(url)
+GLib.timeout_add(30000, lambda: (print("FAIL   timeout"), finish(), False)[2])
+Gtk.main()
+print(f"\n{'FALHOU' if fails else 'OK'}: {fails} falhas")
+sys.exit(1 if fails else 0)

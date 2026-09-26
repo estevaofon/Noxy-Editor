@@ -92,6 +92,7 @@ Design e plano em `docs/superpowers/`.
     noxy tests/run.nx            # o núcleo inteiro, sem navegador
     noxy tests/protocol.nx       # servidor + cliente HTTP in-process
     python3 tests/web_smoke.py   # o cliente web num Chrome headless (precisa de google-chrome)
+    GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout e arraste do painel no WebKitGTK real (PyGObject; abre uma janela)
 
 `tests/MANUAL.md` lista o que só se confere à mão.
 
