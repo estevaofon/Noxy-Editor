@@ -4,6 +4,8 @@
 (() => {
   "use strict";
   const token = new URLSearchParams(location.search).get("t") || "";
+  // id desta carga da pagina: o bye de um reload nao pode encerrar o editor
+  const PAGE_ID = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
   const $ = (id) => document.getElementById(id);
   const els = {
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
@@ -52,6 +54,7 @@
     const ev = queue.shift();
     ev.rows = rows;
     ev.tree_version = treeVersion;
+    ev.page = PAGE_ID;
     try {
       const res = await fetch("/event", {
         method: "POST",
@@ -336,7 +339,7 @@
   }).observe(els.editor);
   setInterval(() => { if (frame && frame.output.running) send({ kind: "poll" }); }, 250);
   window.addEventListener("pagehide", () => {
-    navigator.sendBeacon("/event?t=" + encodeURIComponent(token), JSON.stringify({ kind: "bye", rows, tree_version: treeVersion }));
+    navigator.sendBeacon("/event?t=" + encodeURIComponent(token), JSON.stringify({ kind: "bye", page: PAGE_ID, rows, tree_version: treeVersion }));
   });
 
   rows = rowsNow();

@@ -441,13 +441,15 @@ a string do quadro ou `""` para 400.
 | `poll` | | só devolve o quadro |
 | `modal` | key = id do botão | resposta a um modal |
 | `quit` | | janela fechada (mandado pela routine que espera a extensão) |
-| `bye` | | página descarregando (`pagehide`); o editor sai se nada chegar em 3 s |
-| `quit_if_idle` | | mandado pelo próprio editor 3 s após `bye`: encerra se nenhum evento chegou depois do `bye` |
+| `bye` | page | página descarregando (`pagehide`), com o id da página |
+| `quit_if_idle` | | mandado pelo próprio editor 3 s após `bye`: encerra se a página que se despediu ainda é a última que mandou evento |
 
-Todo evento carrega `rows` e `tree_version` (a versão que o cliente tem).
-Um reload da página manda `bye` e logo depois `init`, então o
-`quit_if_idle` que chega 3 s depois encontra um evento recente e não encerra;
-fechar a janela do navegador manda só `bye`, e o editor encerra.
+Todo evento carrega `rows`, `tree_version` (a versão que o cliente tem) e
+`page`, um id sorteado a cada carga da página. Num reload a página antiga
+manda `bye` e a nova manda `init` com outro id, em qualquer ordem (o
+`sendBeacon` é assíncrono), e o `quit_if_idle` de 3 s depois vê que a última
+página não é a que se despediu; fechar a janela do navegador manda só `bye`,
+e o editor encerra.
 Evento de kind desconhecido devolve o quadro com `message = "evento
 desconhecido: <kind>"`.
 

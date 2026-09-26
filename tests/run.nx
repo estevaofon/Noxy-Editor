@@ -11,6 +11,7 @@ use strings
 use src.session as session
 use src.frame as frame
 use src.events as events
+use src.browser as browser
 
 let fails = 0
 let total = 0
@@ -415,6 +416,9 @@ func test_session() -> void
     editing.insert_text(ref s.tabs[s.active].editor, "q", 10, 9)
     session.save(ref s)
     check("salvar num caminho que nao existe vira mensagem e a aba continua suja", strings.contains(s.message, "nao consegui gravar") && s.tabs[s.active].editor.doc.dirty)
+    let before2: int = length(s.tabs)
+    session.open_file(ref s, sys.getcwd() + "/tests/run.nx")
+    check("abrir caminho fora da raiz e recusado", length(s.tabs) == before2 && strings.contains(s.message, "fora da pasta"))
     check("relative e basename", session.relative(root, root + "/sub/c.nx") == "sub/c.nx" && session.basename("/a/b.nx") == "b.nx" && session.dirname("/a/b.nx") == "/a" && session.dirname("b.nx") == ".")
 end
 
@@ -513,18 +517,39 @@ func test_events() -> void
     events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
     check("quit marca quitting", s.quitting)
 
-    // reload no navegador: bye e logo depois init; o quit_if_idle de 3 s
-    // depois nao pode encerrar
+    // reload no navegador: cada pagina tem um id; o bye da pagina antiga pode
+    // chegar antes ou depois do init da nova (o sendBeacon e assincrono), e
+    // o quit_if_idle so encerra se a pagina que se despediu ainda e a ultima
     let q: session.Session = session.new_session(root)
     session.load(ref q)
-    events.dispatch(ref q, "{\"kind\":\"bye\",\"rows\":20,\"tree_version\":2}", 1000)
+    events.dispatch(ref q, "{\"kind\":\"init\",\"page\":\"A\",\"rows\":20,\"tree_version\":0}", 500)
+    events.dispatch(ref q, "{\"kind\":\"bye\",\"page\":\"A\",\"rows\":20,\"tree_version\":2}", 1000)
     check("bye marca a flag para o loop", q.bye)
-    events.dispatch(ref q, "{\"kind\":\"init\",\"rows\":20,\"tree_version\":0}", 1200)
+    events.dispatch(ref q, "{\"kind\":\"init\",\"page\":\"B\",\"rows\":20,\"tree_version\":0}", 1200)
     events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 4000)
-    check("reload: init depois do bye cancela o encerramento", !q.quitting)
-    events.dispatch(ref q, "{\"kind\":\"bye\",\"rows\":20,\"tree_version\":2}", 5000)
-    events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 8000)
-    check("bye sem evento novo encerra", q.quitting)
+    check("reload: init da pagina nova depois do bye cancela o encerramento", !q.quitting)
+    events.dispatch(ref q, "{\"kind\":\"init\",\"page\":\"C\",\"rows\":20,\"tree_version\":0}", 5000)
+    events.dispatch(ref q, "{\"kind\":\"bye\",\"page\":\"B\",\"rows\":20,\"tree_version\":2}", 5100)
+    events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 8100)
+    check("reload: bye da pagina antiga chegando depois do init da nova tambem nao encerra", !q.quitting)
+    events.dispatch(ref q, "{\"kind\":\"bye\",\"page\":\"C\",\"rows\":20,\"tree_version\":2}", 9000)
+    events.dispatch(ref q, "{\"kind\":\"quit_if_idle\"}", 12000)
+    check("bye da ultima pagina sem pagina nova encerra", q.quitting)
+end
+
+func test_browser() -> void
+    print("browser")
+    check("shell_quote", browser.shell_quote("a'b") == "'a'\\''b'")
+    check("dir_of", browser.dir_of("/a/b/c.html") == "/a/b" && browser.dir_of("c.html") == ".")
+    let url: string = "http://127.0.0.1:1/?t=abc"
+    let page: string = browser.write_redirect(url)
+    check("write_redirect cria a pagina", page != "" && io.exists(page))
+    check("a pagina redireciona para a url", strings.contains(read_file(page), "url=" + url))
+    let dir: string = browser.dir_of(page)
+    let mode: sys.SysResult = sys.exec_output("stat -c %a " + browser.shell_quote(dir))
+    check("o diretorio e so do usuario (0700)", strings.trim(mode.output) == "700")
+    browser.cleanup(page)
+    check("cleanup remove a pagina e o diretorio", !io.exists(page) && !io.exists(dir))
 end
 
 test_document()
@@ -536,4 +561,5 @@ test_runner()
 test_session()
 test_frame()
 test_events()
+test_browser()
 report()

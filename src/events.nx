@@ -26,10 +26,11 @@ struct Event
     index: int
     rows: int
     tree_version: int   // a versao da arvore que o cliente tem
+    page: string        // id da pagina (por carga), para o bye de um reload
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "")
 end
 
 // trivial: eventos que nao apagam a mensagem de status.
@@ -145,8 +146,8 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
     if !trivial(e.kind) then
         s.message = ""
     end
-    if e.kind != "quit_if_idle" then
-        s.last_event = now
+    if e.kind != "quit_if_idle" && e.kind != "bye" && e.page != "" then
+        s.page = e.page
     end
     if e.kind == "key" then
         handle_key(ref s, e, now)
@@ -204,11 +205,12 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         s.quitting = true
     elif e.kind == "bye" then
         s.bye = true
-        s.bye_at = now
+        s.bye_page = e.page
     elif e.kind == "quit_if_idle" then
-        // chega 3 s depois do bye (editor.nx); um reload manda init nesse
-        // meio tempo, e ai last_event passa de bye_at e o editor fica
-        if s.last_event <= s.bye_at then
+        // chega 3 s depois do bye (editor.nx). Num reload a pagina nova ja
+        // mandou init com outro id (antes ou depois do bye, o sendBeacon e
+        // assincrono); so encerra se quem se despediu ainda e a ultima pagina
+        if s.bye_page == s.page then
             s.quitting = true
         end
     elif e.kind != "init" && e.kind != "poll" then
