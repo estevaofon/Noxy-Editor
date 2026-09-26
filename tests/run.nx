@@ -1106,15 +1106,32 @@ func test_minimap() -> void
     io.remove(root + "/longo.nx")
 end
 
-// test_term_shell conversa com um shell de verdade: so onde a noxy_pty abre
-// um terminal (Linux e macOS).
+// shell_line e a linha que imprime "ok_42" e a pasta atual no shell da
+// plataforma (sh ou cmd.exe); a linha digitada nao contem "ok_42", so a
+// saida do comando contem. shell_exit encerra o shell.
+func shell_line() -> string
+    if platform.windows() then
+        return "cd& for /f %i in ('set /a 6*7') do @echo ok_%i\r"
+    end
+    return "pwd; echo ok_$((6*7))\n"
+end
+
+func shell_exit() -> string
+    if platform.windows() then
+        return "exit\r"
+    end
+    return "exit\n"
+end
+
+// test_term_shell conversa com um shell de verdade: /bin/sh no Linux e no
+// macOS, cmd.exe num pseudoconsole no Windows.
 func test_term_shell(root: string) -> void
     let s: session.Session = session.new_session(root)
     session.load(ref s)
     let f0: string = events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
     check("term_open abre um shell na raiz e mostra a aba", s.term.open && s.term.id > 0 && s.panel.tab == "terminal" && strings.contains(f0, "\"term\":{") && term.current_id == s.term.id)
     let id: int = s.term.id
-    check("write e read pela ponte", term.write(id, base64_encode("pwd; echo ok_$((6*7))\n")))
+    check("write e read pela ponte", term.write(id, base64_encode(shell_line())))
     let out: string = ""
     let tries: int = 0
     while !strings.contains(out, "ok_42") && tries < 20 do
@@ -1122,7 +1139,8 @@ func test_term_shell(root: string) -> void
         out = out + to_str(base64_decode(r.data))
         tries = tries + 1
     end
-    check("o shell roda na raiz aberta", strings.contains(out, "ok_42") && strings.contains(out, root))
+    // o cmd escreve a pasta com barras invertidas: compara normalizado
+    check("o shell roda na raiz aberta", strings.contains(out, "ok_42") && strings.contains(strings.to_lower(platform.slashes(out)), strings.to_lower(root)))
     events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
     check("term_open com um aberto nao abre outro", s.term.id == id)
     events.dispatch(ref s, "{\"kind\":\"term_resize\",\"cols\":100,\"term_rows\":30,\"tree_version\":2}", 1)
@@ -1133,7 +1151,7 @@ func test_term_shell(root: string) -> void
     check("depois de fechar, ler da erro", !after.ok)
     let x: term.Term = term.new_term()
     term.open(ref x, root, 80, 24)
-    term.write(x.id, base64_encode("exit\n"))
+    term.write(x.id, base64_encode(shell_exit()))
     let ended: bool = false
     tries = 0
     while !ended && tries < 40 do
@@ -1150,14 +1168,10 @@ func test_term() -> void
     let root: string = tmp_root()
     if platform.windows() then
         check("shell do terminal no Windows e o cmd.exe do COMSPEC", strings.ends_with(strings.to_lower(term.shell()), "cmd.exe"))
-        let w: session.Session = session.new_session(root)
-        session.load(ref w)
-        let fw: string = events.dispatch(ref w, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
-        check("no Windows, term_open falha com a mensagem da extensao, sem derrubar", !w.term.open && term.current_id == 0 && strings.contains(w.term.error, "Windows") && strings.contains(fw, "terminal indisponivel"))
     else
         check("shell do terminal vem de SHELL ou /bin/sh", term.shell() != "")
-        test_term_shell(root)
     end
+    test_term_shell(root)
     let e: term.Term = term.new_term()
     term.open(ref e, "/nao/existe", 80, 24)
     check("falha ao abrir vira erro na sessao, sem derrubar", !e.open && e.error != "")

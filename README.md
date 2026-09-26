@@ -57,9 +57,9 @@ A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
 
 O terminal (Ctrl+`) é o package [`noxy_pty`](https://github.com/estevaofon/noxy_pty),
 importado em `src/term.nx` e instalado pelo mesmo `noxy --sync`. É Go puro,
-sem dependências de sistema. No Windows o binário existe, para o editor
-compilar, mas abrir um terminal responde "terminal indisponível no Windows
-nesta versão".
+sem dependências de sistema: pty no Linux e no macOS, pseudoconsole
+(ConPTY) no Windows, onde abre o `cmd.exe` do `COMSPEC` e precisa do Windows
+10 1809 ou mais novo.
 
 ## Atalhos
 
@@ -151,8 +151,8 @@ Design e plano em `docs/superpowers/`.
     GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout, arraste do painel e terminal no WebKitGTK real (PyGObject; abre uma janela)
 
 A CI (`.github/workflows/ci.yml`) roda as duas suítes Noxy no Ubuntu e no
-Windows. Os testes usam cache e configuração próprios em `tests/tmp`, nunca
-os seus. No Windows a parte do terminal confere só a recusa da `noxy_pty`.
+Windows, com um shell de verdade no terminal (`sh` e `cmd.exe`). Os testes
+usam cache e configuração próprios em `tests/tmp`, nunca os seus.
 
 `tests/MANUAL.md` lista o que só se confere à mão.
 
@@ -162,10 +162,10 @@ Busca sem regex; um terminal por vez; git só para ver (commit, pull e push
 pelo terminal); o programa executado recebe `/dev/null` (`nul` no Windows)
 como entrada (para programas interativos, use o terminal).
 
-No Windows: o terminal não abre (a `noxy_pty` ainda não tem ConPTY; Ctrl+`
-mostra a recusa na barra de status); o F5 demora cerca de um segundo a mais
-para começar, porque o PowerShell lança o programa numa janela oculta; Parar
-mata a árvore de processos na hora (`taskkill /T /F`), sem os 2 s de TERM do
-Linux; e a raiz ou o arquivo com `%` ou `!` no nome quebram o F5 e o git (o
-`cmd` expande esses caracteres). O Linux e o macOS usam `sh`; o Windows usa
-`cmd` e PowerShell, sem depender de Git Bash ou WSL.
+No Windows: o F5 demora cerca de um segundo a mais para começar, porque o
+PowerShell lança o programa numa janela oculta; Parar mata a árvore de
+processos na hora (`taskkill /T /F`), sem os 2 s de TERM do Linux; a raiz ou
+o arquivo com `%` ou `!` no nome quebram o F5 e o git (o `cmd` expande esses
+caracteres); e o terminal é o `cmd.exe` (mude o `COMSPEC` para outro shell).
+O Linux e o macOS usam `sh`; o Windows usa `cmd` e PowerShell, sem depender
+de Git Bash ou WSL.

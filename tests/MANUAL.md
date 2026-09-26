@@ -29,7 +29,9 @@ Com o `noxy` no PATH de um prompt (cmd ou PowerShell), sem Git Bash nem WSL:
 - [ ] `noxy editor.nx arquivo.nx` abre a pasta do arquivo com ele numa aba e o título `arquivo.nx — Noxy Editor`.
 - [ ] F5 num `.nx` que imprime aos poucos: a saída aparece ao vivo no painel e termina com `[saiu com N]`; nenhuma janela de console pisca.
 - [ ] F5 num programa sem fim e Parar: `[interrompido]` no painel e nenhum `noxy.exe` sobrando no Gerenciador de Tarefas além do editor.
-- [ ] Ctrl+` mostra `terminal: terminal indisponivel no Windows nesta versao` na barra de status; o editor continua.
+- [ ] Ctrl+` abre um `cmd.exe` na pasta aberta, com o prompt e acentos certos (`dir` numa pasta com `café.nx`); `cls` limpa; Ctrl+C interrompe um `ping -t 127.0.0.1`; `exit` fecha e a aba avisa que o shell terminou.
+- [ ] Redimensionar o painel com o terminal aberto: `mode con` mostra o tamanho novo.
+- [ ] Fechar a janela pelo X com um `ping -t 127.0.0.1` no terminal: nenhum `ping.exe` nem `cmd.exe` órfão no Gerenciador de Tarefas.
 - [ ] Editar sem salvar, fechar pelo X, abrir a mesma pasta: a aba volta suja (a cópia fica em `%LOCALAPPDATA%\noxy-editor\recovery\`).
 - [ ] Trocar o tema e reabrir: continua (`%APPDATA%\noxy-editor\settings.json`).
 - [ ] Numa pasta com espaço e acento no caminho dentro de um repositório: a branch aparece na status e um arquivo salvo fica âmbar.

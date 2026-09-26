@@ -91,13 +91,36 @@ post(base, "segredo", "{\"kind\":\"key\",\"key\":\"end\",\"rows\":10,\"tree_vers
 let typed: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"text\",\"text\":\"0\",\"rows\":10,\"tree_version\":2}")
 let tbody: string = to_str(typed.body)
 check("abrir, end e digitar refletem no quadro", strings.contains(tbody, "\"t\":\"10\"") && strings.contains(tbody, "\"dirty\":true") && strings.contains(tbody, "\"tree\":[]"))
+// has_size: a saida do shell ja mostrou 24 linhas por 80 colunas
+func has_size(out: string) -> bool
+    if platform.windows() then
+        return strings.contains(out, "24") && strings.contains(out, "80")
+    end
+    return strings.contains(out, "24 80")
+end
+
+// exit_line encerra o shell da plataforma
+func exit_line() -> string
+    if platform.windows() then
+        return "exit\r"
+    end
+    return "exit\n"
+end
+
 // terminal: abre pelo /event, escreve e le pelas rotas /term fora do dono
 // rows e o tamanho do editor; term_rows e o do xterm, que vai para o pty
 func term_over_http() -> void
 let to: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"term_open\",\"cols\":80,\"rows\":40,\"term_rows\":24,\"tree_version\":2}")
 let tid: int = s.term.id
 check("term_open pelo /event", to.status_code == 200 && tid > 0)
-let tw: http_client.ClientResponse = post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode("echo ok_$((40+2)); stty size\n") + "\"}")
+// a linha digitada nao contem "ok_42"; depois do echo, o tamanho do terminal
+// (stty size no sh: "24 80"; mode con no cmd: linhas e colunas em linhas
+// separadas)
+let line: string = "echo ok_$((40+2)); stty size\n"
+if platform.windows() then
+    line = "for /f %i in ('set /a 40+2') do @echo ok_%i& mode con\r"
+end
+let tw: http_client.ClientResponse = post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode(line) + "\"}")
 check("POST /term/write", tw.status_code == 200)
 let term_out: string = ""
 let tn: int = 0
@@ -109,18 +132,18 @@ while !strings.contains(term_out, "ok_42") && tn < 20 do
 end
 check("POST /term/read devolve a saida do shell", strings.contains(term_out, "ok_42"))
 let tn2: int = 0
-while !strings.contains(term_out, "24 80") && tn2 < 10 do
+while !has_size(term_out) && tn2 < 10 do
     let tr3: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":" + to_str(tid) + "}")
     let rv3: any = json_parse(to_str(tr3.body))
     term_out = term_out + to_str(base64_decode(rv3["data"]))
     tn2 = tn2 + 1
 end
-check("o pty tem o tamanho do xterm (24x80), nao o do editor", strings.contains(term_out, "24 80") && s.rows == 40)
+check("o pty tem o tamanho do xterm (24x80), nao o do editor", has_size(term_out) && s.rows == 40)
 let stale: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":" + to_str(tid + 99) + "}")
 check("id que nao e o atual e 404", stale.status_code == 404)
 let tnok: http_client.ClientResponse = post_to(base + "/term/read", "errado", "{\"id\":" + to_str(tid) + "}")
 check("rota do terminal exige o token", tnok.status_code == 403)
-post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode("exit\n") + "\"}")
+post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode(exit_line()) + "\"}")
 let ended: bool = false
 tn = 0
 while !ended && tn < 20 do
@@ -131,18 +154,7 @@ end
 check("fim do shell chega como exited", ended)
 end
 
-if platform.windows() then
-    // a noxy_pty no Windows recusa abrir: o erro vai na mensagem do quadro e
-    // as rotas /term continuam protegidas
-    let tw0: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"term_open\",\"cols\":80,\"rows\":40,\"term_rows\":24,\"tree_version\":2}")
-    check("no Windows, term_open pelo /event responde com a mensagem da extensao", tw0.status_code == 200 && s.term.id == 0 && strings.contains(to_str(tw0.body), "terminal indisponivel"))
-    let nz: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":1}")
-    check("sem terminal aberto, /term/read e 404", nz.status_code == 404)
-    let tnok0: http_client.ClientResponse = post_to(base + "/term/read", "errado", "{\"id\":1}")
-    check("rota do terminal exige o token", tnok0.status_code == 403)
-else
-    term_over_http()
-end
+term_over_http()
 
 let beacon: http_client.ClientResponse = http_client.post(base + "/event?t=segredo", to_bytes("{\"kind\":\"quit\",\"rows\":10,\"tree_version\":2}"))
 check("quit com token na query (sendBeacon) e aceito", beacon.status_code == 200)
