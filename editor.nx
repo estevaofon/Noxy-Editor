@@ -61,6 +61,7 @@ if first_file != "" then
     session.open_file(ref s, first_file)
 end
 session.start_index(ref s)
+session.start_git(ref s)
 let restored: int = session.restore(ref s)
 if restored > 0 then
     s.message = to_str(restored) + " arquivo(s) recuperado(s) com alteracoes nao salvas"

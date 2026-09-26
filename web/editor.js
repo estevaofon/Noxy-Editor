@@ -13,7 +13,7 @@
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
     panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
     runStop: $("run-stop"), searchInput: $("search-input"), searchCase: $("search-case"), searchStatus: $("search-status"), searchResults: $("search-results"),
-    status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
+    status: $("status"), statusGit: $("status-git"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     list: $("list"), listInput: $("list-input"), listItems: $("list-items"),
     findbar: $("findbar"), findInput: $("find-input"), findCase: $("find-case"), findCount: $("find-count"), findPrev: $("find-prev"), findNext: $("find-next"), findClose: $("find-close"),
@@ -66,6 +66,7 @@
     ev.tree_version = treeVersion;
     ev.page = PAGE_ID;
     ev.search_version = searchVersion;
+    ev.git_version = git.version;
     try {
       const res = await fetch("/event", {
         method: "POST",
@@ -95,6 +96,17 @@
     theme = name;
   }
 
+  // git: o ultimo status recebido (so vem quando a versao muda); a arvore e
+  // redesenhada com as cores quando ele muda
+  let git = { version: 0, available: false, branch: "", status: {}, dirs: {} };
+  let treeRoot = "", treeNodes = [];
+  function gitClass(path, isDir) {
+    if (!git.available) return "";
+    if (isDir) return git.dirs[path] ? " git-dir" : "";
+    const c = git.status[path];
+    return c ? " git-" + c : "";
+  }
+
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -106,8 +118,12 @@
     frame = f;
     document.title = f.title;
     applyTheme(f.settings.theme);
+    const gitChanged = f.git.version !== git.version;
+    if (gitChanged) git = f.git;
+    els.statusGit.textContent = git.available ? "⎇ " + git.branch : "";
     renderTabs(f.tabs);
-    if (f.tree_version !== treeVersion) { treeVersion = f.tree_version; renderTree(f.root, f.tree); }
+    if (f.tree_version !== treeVersion) { treeVersion = f.tree_version; treeRoot = f.root; treeNodes = f.tree; renderTree(treeRoot, treeNodes); }
+    else if (gitChanged) renderTree(treeRoot, treeNodes);
     renderView(f);
     els.statusLeft.textContent = f.status.left;
     els.statusRight.textContent = f.status.right;
@@ -132,7 +148,7 @@
 
   function renderTabs(tabs) {
     els.tabs.replaceChildren(...tabs.map((t, i) => {
-      const tab = el("div", "tab" + (t.active ? " active" : ""));
+      const tab = el("div", "tab" + (t.active ? " active" : "") + gitClass(t.path, false));
       tab.title = t.path;
       tab.append(el("span", "name", t.name + (t.dirty ? " ●" : "")));
       const close = el("span", "close", "×");
@@ -151,7 +167,7 @@
   function renderTree(root, nodes) {
     els.rootName.textContent = root;
     els.tree.replaceChildren(...nodes.map((n) => {
-      const node = el("div", "node " + (n.is_dir ? "dir" : "file"));
+      const node = el("div", "node " + (n.is_dir ? "dir" : "file") + gitClass(n.path, n.is_dir));
       node.style.paddingLeft = (10 + n.depth * 14) + "px";
       node.append(el("span", "chev", n.is_dir ? (n.expanded ? "▾" : "▸") : ""));
       node.append(el("span", "name", n.name));

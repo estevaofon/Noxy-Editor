@@ -34,10 +34,11 @@ struct Event
     page: string        // id da pagina (por carga), para o bye de um reload
     case_sensitive: bool   // da busca (case e palavra reservada)
     search_version: int    // a versao dos resultados da busca na pasta que o cliente tem
+    git_version: int       // a versao do status do git que o cliente tem
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0)
 end
 
 // now e o relogio do dono do estado, em milissegundos. time_now() da
@@ -120,6 +121,8 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
             end
             find.refresh(ref s.find, ed.doc, editing.sel_range(ed).start)
         end
+    elif id == "git_refresh" then
+        session.start_git(s)
     elif id == "reindex" then
         session.start_index(s)
         s.message = "reindexando..."
@@ -462,8 +465,13 @@ func dispatch(s: ref session.Session, body: string, now: int) -> string
         eprint("erro interno no evento " + e.kind + ": " + r.failure.message)
         s.message = "erro interno: " + r.failure.message
     end
+    let was_running: bool = s.run.running
     runner.poll(ref s.run, now)
+    if was_running && !s.run.running then
+        session.start_git(s)    // o programa pode ter criado ou mudado arquivos
+    end
     session.poll_index(s)
     session.poll_search(s)
-    return frame.build(s, e.tree_version, e.search_version)
+    session.poll_git(s)
+    return frame.build(s, e.tree_version, e.search_version, e.git_version)
 end

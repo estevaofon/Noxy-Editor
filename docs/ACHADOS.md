@@ -81,3 +81,13 @@ segundos com 200. **Contorno:** `events.now()` usa `time.now_ms()`, com teste
 que dorme 120 ms e confere a diferença. **Sugestão:** corrigir a descrição no
 README, ou fazer `time_now()` devolver ms como documentado e deixar
 `time.now()` para segundos.
+
+## 9. `sys.exec_output` apara espaços nas pontas da saída
+
+**Onde:** `src/gitinfo.nx`. **O que:** `SysResult.output` volta sem os
+espaços e quebras do começo e do fim (`"  dois espacos\n fim  \n"` vira
+`"dois espacos\n fim"`). Para saída com formato posicional isso corrompe
+dados: a primeira linha do `git status --porcelain` (` M a.nx`) perdia o
+espaço e o caminho perdia a primeira letra. **Contorno:** uma linha `#` antes
+do comando (`echo '#'; git status ...`), ignorada no parse. **Sugestão:**
+devolver a saída intacta; quem quiser aparar usa `strings.trim`.

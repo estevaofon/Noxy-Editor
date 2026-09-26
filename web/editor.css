@@ -139,6 +139,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* barra de status */
 #status { display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--bg-status); border-top: 1px solid var(--border); font-size: 12px; color: var(--fg-dim); }
+#status-git { color: var(--fg-dim); }
+.git-M > .name, .tab.git-M .name { color: var(--warn); }
+.git-A > .name, .git-\? > .name, .git-R > .name, .tab.git-A .name, .tab.git-\? .name, .tab.git-R .name { color: var(--ok); }
+.git-D > .name, .tab.git-D .name { color: var(--danger); text-decoration: line-through; }
+.node.git-dir > .name::after { content: " •"; color: var(--warn); }
 #status-msg { flex: 1; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #status.dead #status-msg { color: var(--danger); }
 

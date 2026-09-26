@@ -12,6 +12,7 @@ use src.index as index
 use src.find as find
 use src.search as search
 use src.recovery as recovery
+use src.gitinfo as gitinfo
 
 struct Tab
     editor: editing.Editor
@@ -91,6 +92,8 @@ struct Session
     find: find.Find
     search: Search
     recovery_warned: bool   // ja avisou que nao consegue gravar copias
+    git: gitinfo.GitInfo
+    git_task: any           // task de gitinfo.collect; null parada
 end
 
 // Search e a busca na pasta: a consulta, a task e os resultados; version
@@ -182,6 +185,28 @@ func poll_search(s: ref Session) -> void
     s.search.version = s.search.version + 1
 end
 
+// start_git (re)coleta branch e status numa task; uma coleta em andamento
+// e substituida (a antiga termina e e ignorada).
+func start_git(s: ref Session) -> void
+    s.git_task = spawn_task(gitinfo.collect, s.root)
+end
+
+func poll_git(s: ref Session) -> void
+    if s.git_task == null then
+        return
+    end
+    let env: any = task_await(s.git_task, 0)
+    if env["status"] == "timeout" then
+        return
+    end
+    if env["status"] == "ok" then
+        let g: gitinfo.GitInfo = env["value"]
+        g.version = s.git.version + 1
+        s.git = g
+    end
+    s.git_task = null
+end
+
 // recovery_tick grava a copia das abas sujas cujo texto mudou desde a
 // ultima copia, no maximo uma vez por COPY_EVERY_MS; force (bye) grava na hora.
 func recovery_tick(s: ref Session, now: int, force: bool) -> void
@@ -264,7 +289,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0), false)
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0), false, gitinfo.empty_git(), null)
 end
 
 func basename(path: string) -> string
@@ -432,6 +457,7 @@ func save_tab(s: ref Session, i: int) -> bool
         return false
     end
     s.tabs[i].editor.doc.dirty = false
+    start_git(s)
     recovery.remove(path)
     s.tabs[i].copy_text = ""
     s.tabs[i].copy_at = 0

@@ -1,0 +1,107 @@
+// src/gitinfo.nx — branch e status do git para a interface. collect roda
+// numa task (session.start_git); o status vai indexado por caminho absoluto,
+// que e o que a arvore e as abas carregam. A raiz aberta pode ser uma
+// subpasta do repositorio: rev-parse --show-prefix diz qual, e so o que esta
+// sob ela entra. Sem git ou fora de um repositorio: available = false.
+use sys
+use strings select substring, split, starts_with, trim, join_count
+use strings
+
+struct Parsed
+    status: map[string, string]   // caminho absoluto -> "M", "A", "D", "R", "?"
+    dirs: map[string, bool]       // pastas com alteracao dentro
+end
+
+struct GitInfo
+    available: bool
+    branch: string
+    status: map[string, string]
+    dirs: map[string, bool]
+    version: int
+end
+
+func empty_git() -> GitInfo
+    let st: map[string, string] = {}
+    let ds: map[string, bool] = {}
+    return GitInfo(false, "", st, ds, 0)
+end
+
+func shell_quote(s: string) -> string
+    return "'" + strings.replace(s, "'", "'\\''") + "'"
+end
+
+func code_of(x: string, y: string) -> string
+    if x == "?" then
+        return "?"
+    end
+    if x == "R" || y == "R" then
+        return "R"
+    end
+    if x == "A" then
+        return "A"
+    end
+    if x == "D" || y == "D" then
+        return "D"
+    end
+    return "M"
+end
+
+// unquote tira as aspas que o git poe em caminhos com espaco ou acento.
+func unquote(path: string) -> string
+    if starts_with(path, "\"") && length(path) >= 2 then
+        return strings.replace(strings.replace(substring(path, 1, length(path) - 1), "\\\"", "\""), "\\\\", "\\")
+    end
+    return path
+end
+
+// parse le o status --porcelain (v1) de um repositorio; prefix e o caminho
+// da raiz aberta dentro do repositorio ("" na raiz dele), root o absoluto.
+func parse(porcelain: string, prefix: string, root: string) -> Parsed
+    let st: map[string, string] = {}
+    let ds: map[string, bool] = {}
+    for line in split(porcelain, "\n").parts do
+        if length(line) < 4 then
+            continue
+        end
+        let x: string = substring(line, 0, 1)
+        let y: string = substring(line, 1, 2)
+        let path: string = substring(line, 3, length(line))
+        let arrow: string[] = split(path, " -> ").parts
+        if length(arrow) > 1 then
+            path = arrow[length(arrow) - 1]
+        end
+        path = unquote(path)
+        if !starts_with(path, prefix) then
+            continue
+        end
+        let rel: string = substring(path, length(prefix), length(path))
+        st[root + "/" + rel] = code_of(x, y)
+        let parts: string[] = split(rel, "/").parts
+        for k in range(1, length(parts)) do
+            ds[root + "/" + join_count(parts, "/", k)] = true
+        end
+    end
+    return Parsed(st, ds)
+end
+
+func collect(root: string) -> GitInfo
+    let g: GitInfo = empty_git()
+    let q: string = shell_quote(root)
+    let b: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --abbrev-ref HEAD 2>/dev/null")
+    if !b.ok || b.exit_code != 0 then
+        return g
+    end
+    let pre: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --show-prefix 2>/dev/null")
+    // exec_output apara espacos nas pontas da saida (docs/ACHADOS.md), e o
+    // porcelain comeca com espaco (" M a.nx"): uma linha "#" na frente protege
+    let st: sys.SysResult = sys.exec_output("echo '#'; git -C " + q + " status --porcelain --untracked-files=all 2>/dev/null")
+    if !st.ok || st.exit_code != 0 then
+        return g
+    end
+    let p: Parsed = parse(st.output, trim(pre.output), root)
+    g.available = true
+    g.branch = trim(b.output)
+    g.status = p.status
+    g.dirs = p.dirs
+    return g
+end
