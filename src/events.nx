@@ -38,10 +38,11 @@ struct Event
     git_version: int       // a versao do status do git que o cliente tem
     want_minimap: bool     // o cliente quer o formato do arquivo para o minimap
     cols: int              // tamanho do terminal no cliente
+    term_rows: int         // linhas do xterm (rows e o tamanho do editor)
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0, false, 0)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0, false, 0, 0)
 end
 
 // now e o relogio do dono do estado, em milissegundos. time_now() da
@@ -418,14 +419,14 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         close_find(ref s)
     elif e.kind == "term_open" then
         session.show_panel(ref s, "terminal")
-        term.open(ref s.term, s.root, e.cols, e.rows)
+        term.open(ref s.term, s.root, e.cols, e.term_rows)
         if s.term.error != "" then
             s.message = "terminal: " + s.term.error
         end
     elif e.kind == "term_close" then
         term.close(ref s.term)
     elif e.kind == "term_resize" then
-        term.resize(ref s.term, e.cols, e.rows)
+        term.resize(ref s.term, e.cols, e.term_rows)
     elif e.kind == "minimap_goto" then
         if s.active >= 0 then
             editing.scroll_to(ref s.tabs[s.active].editor, e.line - s.rows / 2, s.rows)
@@ -462,7 +463,7 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
     elif e.kind != "init" && e.kind != "poll" then
         s.message = "evento desconhecido: " + e.kind
     end
-    session.recovery_tick(ref s, now, e.kind == "bye")
+    session.recovery_tick(ref s, now, e.kind == "bye" || s.quitting)
     if s.find.open && s.active >= 0 && !trivial(e.kind) then
         find.refresh(ref s.find, s.tabs[s.active].editor.doc, editing.sel_range(s.tabs[s.active].editor).start)
     end

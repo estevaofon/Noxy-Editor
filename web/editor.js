@@ -590,14 +590,14 @@
     fit.fit();
     if (termId && (xterm.cols !== sentCols || xterm.rows !== sentRows)) {
       sentCols = xterm.cols; sentRows = xterm.rows;
-      send({ kind: "term_resize", cols: xterm.cols, rows: xterm.rows });
+      send({ kind: "term_resize", cols: xterm.cols, term_rows: xterm.rows });
     }
   }
   function openTerm() {
     termOpening = true;
     fit.fit();
     sentCols = xterm.cols; sentRows = xterm.rows;
-    send({ kind: "term_open", cols: xterm.cols, rows: xterm.rows });
+    send({ kind: "term_open", cols: xterm.cols, term_rows: xterm.rows });
   }
   async function readLoop(id) {
     while (termId === id) {

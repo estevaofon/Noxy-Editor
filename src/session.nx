@@ -249,7 +249,12 @@ end
 func restore(s: ref Session) -> int
     let n: int = 0
     for c in recovery.list() do
-        if !starts_with(c.path, s.root + "/") || find_tab(*s, c.path) >= 0 then
+        if !starts_with(c.path, s.root + "/") then
+            continue
+        end
+        // aberta e suja: a aba ja tem trabalho mais novo que a copia
+        let existing: int = find_tab(*s, c.path)
+        if existing >= 0 && s.tabs[existing].editor.doc.dirty then
             continue
         end
         if io.exists(c.path) then
@@ -267,8 +272,13 @@ func restore(s: ref Session) -> int
         let t: Tab = new_tab(editing.new_editor(d))
         t.copy_text = c.text
         t.copy_at = c.saved_at
-        append(ref s.tabs, t)
-        s.active = length(s.tabs) - 1
+        if existing >= 0 then
+            s.tabs[existing] = t    // aberta e limpa (o arquivo passado na linha de comando): vale a copia
+            s.active = existing
+        else
+            append(ref s.tabs, t)
+            s.active = length(s.tabs) - 1
+        end
         n = n + 1
     end
     return n

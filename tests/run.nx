@@ -888,6 +888,34 @@ func test_recovery() -> void
     let s4: session.Session = session.new_session(root)
     session.load(ref s4)
     check("copia de fora da raiz nao abre e nao e apagada", session.restore(ref s4) == 1 && length(recovery.list()) == 2)
+    // o arquivo passado na linha de comando ja esta aberto (limpo) quando o
+    // restore roda: a copia tem de valer para essa aba
+    recovery.remove(root + "/sumiu.nx")    // a copia do caso anterior tambem seria restaurada
+    recovery.write(root + "/b.nx", "texto da copia", "\n", 1)
+    let s5: session.Session = session.new_session(root)
+    session.load(ref s5)
+    session.open_file(ref s5, root + "/b.nx")
+    check("restore com a aba ja aberta e limpa aplica a copia", session.restore(ref s5) == 1 && length(s5.tabs) == 1 && s5.tabs[0].editor.doc.dirty && s5.tabs[0].editor.doc.lines[0] == "texto da copia")
+    recovery.remove(root + "/b.nx")
+
+    // fechar pela janela (quit) grava a copia na hora, sem esperar 1 s
+    let s6: session.Session = session.new_session(root)
+    session.load(ref s6)
+    session.open_file(ref s6, root + "/b.nx")
+    editing.insert_text(ref s6.tabs[0].editor, "A", 10, 1)
+    session.recovery_tick(ref s6, 5000, false)
+    editing.insert_text(ref s6.tabs[0].editor, "B", 10, 2)
+    events.dispatch(ref s6, "{\"kind\":\"quit\"}", 5010)
+    let q6: recovery.Copy[] = recovery.list()
+    let got6: string = ""
+    for c in q6 do
+        if c.path == root + "/b.nx" then
+            got6 = c.text
+        end
+    end
+    check("quit grava a copia com o ultimo texto", got6 == doc.to_text(s6.tabs[0].editor.doc))
+    recovery.remove(root + "/b.nx")
+
     // nao salvar apaga
     session.close_tab(ref s4, 0)
     session.answer_modal(ref s4, "discard")
@@ -905,6 +933,7 @@ func git_repo() -> string
     sys.exec("cd '" + repo + "' && git init -q -b principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
     write_file(repo + "/proj/a.nx", "let a = 2\n")
     write_file(repo + "/proj/sub/novo.nx", "n\n")
+    write_file(repo + "/proj/café.nx", "c\n")
     io.remove(repo + "/proj/b.nx")
     return repo
 end
@@ -922,6 +951,7 @@ func test_gitinfo() -> void
     let g: gitinfo.GitInfo = gitinfo.collect(repo + "/proj")
     check("repositorio: branch", g.available && g.branch == "principal")
     check("repositorio: modificado (primeira linha do porcelain, com espaco inicial), apagado e novo, so dentro da raiz", g.status[repo + "/proj/a.nx"] == "M" && g.status[repo + "/proj/b.nx"] == "D" && g.status[repo + "/proj/sub/novo.nx"] == "?" && !has_key(g.status, repo + "/fora.nx") && has_key(g.dirs, repo + "/proj/sub"))
+    check("caminho com acento ganha status (git cita em octal por padrao)", g.status[repo + "/proj/café.nx"] == "?")
     let tmp: string = strings.trim(sys.exec_output("mktemp -d").output)
     check("fora de um repositorio: indisponivel", !gitinfo.collect(tmp).available)
     sys.exec("rmdir '" + tmp + "'")
@@ -985,7 +1015,7 @@ func test_term() -> void
     let root: string = tmp_root()
     let s: session.Session = session.new_session(root)
     session.load(ref s)
-    let f0: string = events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"rows\":24,\"tree_version\":2}", 1)
+    let f0: string = events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
     check("term_open abre um shell na raiz e mostra a aba", s.term.open && s.term.id > 0 && s.panel.tab == "terminal" && strings.contains(f0, "\"term\":{") && term.current_id == s.term.id)
     let id: int = s.term.id
     check("write e read pela ponte", term.write(id, base64_encode("pwd; echo ok_$((6*7))\n")))
@@ -997,9 +1027,9 @@ func test_term() -> void
         tries = tries + 1
     end
     check("o shell roda na raiz aberta", strings.contains(out, "ok_42") && strings.contains(out, root))
-    events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"rows\":24,\"tree_version\":2}", 1)
+    events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
     check("term_open com um aberto nao abre outro", s.term.id == id)
-    events.dispatch(ref s, "{\"kind\":\"term_resize\",\"cols\":100,\"rows\":30,\"tree_version\":2}", 1)
+    events.dispatch(ref s, "{\"kind\":\"term_resize\",\"cols\":100,\"term_rows\":30,\"tree_version\":2}", 1)
     check("term_resize guarda o tamanho", s.term.cols == 100 && s.term.rows == 30)
     events.dispatch(ref s, "{\"kind\":\"term_close\",\"tree_version\":2}", 1)
     check("term_close fecha e zera o id atual", !s.term.open && term.current_id == 0)
