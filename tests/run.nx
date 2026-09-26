@@ -335,8 +335,8 @@ end
 
 func tmp_root() -> string
     let root: string = sys.getcwd() + "/tests/tmp/run"
+    sys.exec("rm -rf '" + root + "'")    // sempre do zero: nada de sobras de outra rodada
     io.mkdir(root + "/sub")
-    io.remove(root + "/bin.nx")    // sobra do teste de UTF-8 da rodada anterior
     write_file(root + "/b.nx", "let b = 1\n")
     write_file(root + "/a.txt", "texto\n")
     write_file(root + "/.hidden", "")
@@ -356,12 +356,15 @@ func run_until(r: ref runner.RunState) -> void
 end
 
 func alive(pid: int) -> bool
-    return sys.exec("kill -0 " + to_str(pid) + " 2>/dev/null").exit_code == 0
+    return sys.exec("kill -0 -" + to_str(pid) + " 2>/dev/null").exit_code == 0
 end
 
 func test_runner() -> void
     print("runner")
-    let root: string = tmp_root()
+    tmp_root()
+    let root: string = sys.getcwd() + "/tests/tmp/runner"
+    io.mkdir(root)
+    write_file(root + "/hello.nx", "use sys\nprint(\"oi\")\nsys.exit(3)\n")
     write_file(root + "/aos_poucos.nx", "use sys\nprint(\"um ação\")\nsys.sleep(700)\nprint(\"dois\")\n")
     write_file(root + "/sem_fim.nx", "use sys\nprint(\"rodando\")\nwhile true do\n    sys.sleep(50)\nend\n")
     let r: runner.RunState = runner.new_run()
@@ -576,7 +579,8 @@ func test_events() -> void
     events.dispatch(ref s, "{\"kind\":\"tree_open\",\"path\":\"" + root + "/sem_fim.nx\",\"rows\":20,\"tree_version\":2}", 18)
     events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"rows\":20,\"tree_version\":2}", 18)
     check("f5 roda o programa sem fim", s.run.running)
-    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 18)
+    let fk: string = events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f5\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 18)
+    last = fk
     waited = 0
     while s.run.running && waited < 100 do
         sys.sleep(50)
@@ -584,6 +588,8 @@ func test_events() -> void
         waited = waited + 1
     end
     check("ctrl+f5 para a execucao", !s.run.running && strings.contains(last, "[interrompido]"))
+    session.close_tab(ref s, s.active)
+    io.remove(root + "/sem_fim.nx")
     sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
     let fth: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"theme:nord\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando theme:nord muda o tema, grava e vai no quadro", s.settings.theme == "nord" && strings.contains(fth, "\"settings\":{\"theme\":\"nord\"}") && settings.load().theme == "nord")

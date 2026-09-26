@@ -12,6 +12,7 @@ import subprocess
 demo = os.path.join("tests", "tmp", "web")
 os.makedirs(os.path.join(demo, "src"), exist_ok=True)
 open(os.path.join(demo, "exemplo.nx"), "w").write('use sys\n// um exemplo para o editor\nfunc soma(a: int, b: int) -> int\n    return a + b\nend\nlet nome: string = "Noxy"\nprint(f"ola {nome}: {soma(2, 3)}")\nfor i in range(3) do\n    print(i)\nend\n')
+open(os.path.join(demo, "sem_fim.nx"), "w").write('use sys\nlet i = 0\nwhile true do\n    print(f"volta {i}")\n    i = i + 1\n    sys.sleep(100)\nend\n')
 open(os.path.join(demo, "notas.txt"), "w").write("texto simples\n")
 open(os.path.join(demo, "src", "util.nx"), "w").write("let x = 1\n")
 cfg = os.path.join(os.getcwd(), "tests", "tmp", "web_config")
@@ -81,7 +82,7 @@ def mouse(kind, x, y, button="left", clicks=1, mods=0):
     ws.call("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": button, "clickCount": clicks, "modifiers": mods})
 
 ws.call("Page.navigate", {"url": url}); settle(1500)
-check("arvore renderizada", ev("document.querySelectorAll('#tree .node').length") == 3)
+check("arvore renderizada", ev("document.querySelectorAll('#tree .node').length") == 4)
 check("nome da raiz", ev("document.getElementById('root-name').textContent") == "web")
 check("titulo inicial", ev("document.title") == "Noxy Editor")
 check("tema escuro aplicado no html", ev("document.documentElement.classList.contains('theme-dark')"))
@@ -136,7 +137,6 @@ check("F5 mostra o painel de saida", not ev("document.getElementById('output').c
 out = ev("document.getElementById('output-text').textContent")
 check("saida do programa aparece", "$ noxy exemplo.nx" in out and "[saiu com" in out)
 # parar pelo botao: um programa sem fim com saida ao vivo
-open(os.path.join(demo, "sem_fim.nx"), "w").write('use sys\nlet i = 0\nwhile true do\n    print(f"volta {i}")\n    i = i + 1\n    sys.sleep(100)\nend\n')
 key("p", mods=2); ws.call("Input.insertText", {"text": "sem_fim"}); settle(); key("Enter")
 key("F5"); settle(1200)
 check("saida ao vivo enquanto roda", "volta 2" in ev("document.getElementById('output-text').textContent") and not ev("document.getElementById('run-stop').classList.contains('hidden')"))
@@ -236,9 +236,9 @@ open(helper, "w").write("use src.browser as browser\nuse sys\nprint(browser.writ
 page = subprocess.run(["noxy", helper, url], capture_output=True, text=True).stdout.strip()
 check("write_redirect devolve um caminho", page.startswith("/"))
 ws.call("Page.navigate", {"url": "file://" + page}); settle(2000)
-check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 3)
+check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 4)
 time.sleep(3.5)
-check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 3)
+check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 4)
 # recuperacao: editar sem salvar, esperar a copia (poll 1,5 s depois da
 # ultima edicao), matar o editor e abrir outro: a aba volta suja
 ev("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
@@ -246,7 +246,6 @@ key("Home", mods=2); insert("// nao salvo\n")
 settle(2500)
 cache = env["NOXY_EDITOR_CACHE_DIR"]
 check("copia de recuperacao gravada sem outro evento", len(os.listdir(os.path.join(cache, "recovery"))) >= 1)
-for fn in os.listdir(os.path.join(cache, "recovery")):
 editor.kill(); editor.wait()
 editor = subprocess.Popen(["noxy", "editor.nx", demo], env=env, stdout=subprocess.DEVNULL, stderr=open(log, "w"))
 url = None

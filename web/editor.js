@@ -12,7 +12,7 @@
     editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
     panelTabs: $("panel-tabs"), searchView: $("search-view"), termView: $("term-view"),
-    searchInput: $("search-input"), searchCase: $("search-case"), searchStatus: $("search-status"), searchResults: $("search-results"),
+    runStop: $("run-stop"), searchInput: $("search-input"), searchCase: $("search-case"), searchStatus: $("search-status"), searchResults: $("search-results"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     list: $("list"), listInput: $("list-input"), listItems: $("list-items"),
@@ -117,6 +117,7 @@
       els.outputText.textContent = f.output.text + (f.output.running ? "\n…" : "");
       els.outputText.scrollTop = els.outputText.scrollHeight;
     }
+    els.runStop.classList.toggle("hidden", !f.output.running);
     renderPanel(f.panel);
     renderSearch(f.search);
     renderModal(f.modal);
@@ -326,7 +327,7 @@
   // chegam pelo textarea (input / compositionend), o que faz acentos e IME
   // funcionarem.
   const NAV = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Home: 1, End: 1, PageUp: 1, PageDown: 1, Enter: 1, Backspace: 1, Delete: 1, Tab: 1, Escape: 1, F5: 1, F3: 1 };
-  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, p: 1, f: 1, h: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
+  const CTRL = { s: 1, z: 1, y: 1, a: 1, w: 1, "/": 1, q: 1, j: 1, "`": 1, p: 1, f: 1, h: 1, f5: 1, arrowleft: 1, arrowright: 1, home: 1, end: 1 };
 
   function onKeyDown(e) {
     if (e.isComposing) return;
@@ -509,6 +510,7 @@
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
   els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "panel_toggle" }); });
+  els.runStop.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); send({ kind: "stop" }); });
   for (const tab of els.panelTabs.querySelectorAll(".ptab")) {
     tab.addEventListener("mousedown", (e) => { e.preventDefault(); if (tab.dataset.tab === "search") wantSearchFocus = true; send({ kind: "panel_tab", key: tab.dataset.tab }); });
   }

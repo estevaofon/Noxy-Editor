@@ -90,6 +90,11 @@ func run_command(s: ref session.Session, id: string, now: int) -> void
         session.close_tab(s, s.active)
     elif id == "run" then
         run_active(s)
+    elif id == "stop" then
+        let msg: string = runner.stop(ref s.run, now)
+        if msg != "" then
+            s.message = msg
+        end
     elif id == "panel" then
         session.toggle_panel(s)
     elif id == "terminal" then
@@ -184,6 +189,10 @@ end
 func handle_key(s: ref session.Session, e: Event, now: int) -> void
     if e.ctrl && e.key == "q" then
         run_command(s, "quit", now)
+        return
+    end
+    if e.key == "f5" && e.ctrl then
+        run_command(s, "stop", now)
         return
     end
     if e.key == "f5" then
@@ -359,6 +368,8 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         session.open_file(ref s, e.path)
     elif e.kind == "run" then
         run_active(ref s)
+    elif e.kind == "stop" then
+        run_command(ref s, "stop", now)
     elif e.kind == "panel_tab" then
         session.show_panel(ref s, e.key)
     elif e.kind == "panel_toggle" then
@@ -451,7 +462,7 @@ func dispatch(s: ref session.Session, body: string, now: int) -> string
         eprint("erro interno no evento " + e.kind + ": " + r.failure.message)
         s.message = "erro interno: " + r.failure.message
     end
-    runner.poll(ref s.run)
+    runner.poll(ref s.run, now)
     session.poll_index(s)
     session.poll_search(s)
     return frame.build(s, e.tree_version, e.search_version)

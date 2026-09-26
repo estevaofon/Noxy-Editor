@@ -133,6 +133,8 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .shit:hover { background: var(--bg-hover); }
 .shit .sline { color: var(--fg-dim); min-width: 36px; text-align: right; }
 #output-close { color: var(--fg-dim); font-size: 16px; line-height: 1; }
+#run-stop { margin-left: auto; margin-right: 10px; padding: 2px 8px; border-radius: 4px; color: var(--danger); font-size: 11px; letter-spacing: .04em; text-transform: none; }
+#run-stop:hover { background: var(--bg-hover); }
 #output-text { margin: 0; padding: 4px 14px 10px; font: 13px var(--font-mono); white-space: pre-wrap; }
 
 /* barra de status */
