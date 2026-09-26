@@ -1,0 +1,134 @@
+// src/document.nx — o documento: linhas de texto e posicoes em code points.
+// Nao conhece cursor, tela nem arquivo. Toda operacao que muda texto marca
+// dirty. Posicoes usam a mesma unidade de substring e codes.
+use strings select substring, split, join_count, replace
+
+struct Pos
+    line: int       // 0-based
+    col: int        // em code points
+end
+
+struct Range
+    start: Pos      // inclusive
+    stop: Pos       // exclusivo; nunca antes de start
+end
+
+struct Document
+    path: string    // absoluto; "" para um buffer sem arquivo
+    lines: string[] // nunca vazio: um documento vazio tem uma linha ""
+    dirty: bool
+end
+
+func from_text(path: string, text: string) -> Document
+    let clean: string = replace(replace(text, "\r\n", "\n"), "\r", "\n")
+    let parts: string[] = split(clean, "\n").parts
+    if length(parts) == 0 then
+        parts = [""]
+    end
+    return Document(path, parts, false)
+end
+
+func to_text(d: Document) -> string
+    return join_count(d.lines, "\n", length(d.lines))
+end
+
+func line_count(d: Document) -> int
+    return length(d.lines)
+end
+
+func line_len(d: Document, i: int) -> int
+    return length(d.lines[i])
+end
+
+func before(a: Pos, b: Pos) -> bool
+    return a.line < b.line || (a.line == b.line && a.col < b.col)
+end
+
+func same(a: Pos, b: Pos) -> bool
+    return a.line == b.line && a.col == b.col
+end
+
+// ordered devolve as duas posicoes em ordem, para tratar uma selecao feita
+// em qualquer direcao.
+func ordered(a: Pos, b: Pos) -> Range
+    if before(b, a) then
+        return Range(b, a)
+    end
+    return Range(a, b)
+end
+
+func clamp(d: Document, p: Pos) -> Pos
+    let line: int = p.line
+    if line < 0 then
+        line = 0
+    end
+    if line >= length(d.lines) then
+        line = length(d.lines) - 1
+    end
+    let col: int = p.col
+    if col < 0 then
+        col = 0
+    end
+    if col > length(d.lines[line]) then
+        col = length(d.lines[line])
+    end
+    return Pos(line, col)
+end
+
+// insert poe text em p; "\n" divide linhas. Devolve a posicao logo depois
+// do texto inserido.
+func insert(d: ref Document, p: Pos, text: string) -> Pos
+    let pieces: string[] = split(text, "\n").parts
+    let n: int = length(pieces)
+    let line: string = d.lines[p.line]
+    let head: string = substring(line, 0, p.col)
+    let tail: string = substring(line, p.col, length(line))
+    d.dirty = true
+    if n == 1 then
+        d.lines[p.line] = head + text + tail
+        return Pos(p.line, p.col + length(text))
+    end
+    let out: string[] = slice(d.lines, 0, p.line)
+    append(ref out, head + pieces[0])
+    for i in range(1, n - 1) do
+        append(ref out, pieces[i])
+    end
+    append(ref out, pieces[n - 1] + tail)
+    for i in range(p.line + 1, length(d.lines)) do
+        append(ref out, d.lines[i])
+    end
+    d.lines = out
+    return Pos(p.line + n - 1, length(pieces[n - 1]))
+end
+
+// delete_range remove [a, b); atravessando linhas, junta as pontas.
+func delete_range(d: ref Document, a: Pos, b: Pos) -> void
+    if same(a, b) then
+        return
+    end
+    let first: string = d.lines[a.line]
+    let last: string = d.lines[b.line]
+    let joined: string = substring(first, 0, a.col) + substring(last, b.col, length(last))
+    d.dirty = true
+    if a.line == b.line then
+        d.lines[a.line] = joined
+        return
+    end
+    let out: string[] = slice(d.lines, 0, a.line)
+    append(ref out, joined)
+    for i in range(b.line + 1, length(d.lines)) do
+        append(ref out, d.lines[i])
+    end
+    d.lines = out
+end
+
+func text_range(d: Document, a: Pos, b: Pos) -> string
+    if a.line == b.line then
+        return substring(d.lines[a.line], a.col, b.col)
+    end
+    let out: string = substring(d.lines[a.line], a.col, length(d.lines[a.line])) + "\n"
+    for i in range(a.line + 1, b.line) do
+        out = out + d.lines[i] + "\n"
+    end
+    return out + substring(d.lines[b.line], 0, b.col)
+end
