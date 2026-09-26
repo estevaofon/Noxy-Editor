@@ -1,0 +1,81 @@
+// src/server.nx — as rotas HTTP e a ponte com o dono do estado. A stdlib
+// roda cada conexao numa routine propria; o handler de /event so empacota
+// o corpo com um canal de resposta, manda no inbox e espera o quadro. O
+// token gerado na partida vai na URL da pagina e volta no cabecalho
+// X-Noxy-Token (ou em ?t=, para o sendBeacon do quit).
+use http_server select *
+use http_parser select *
+use strings select is_valid_utf8
+
+struct Request
+    body: string
+    reply: chan any
+end
+
+let inbox: chan any = make_chan(64)
+let token: string = ""
+let web_dir: string = ""
+let server: HttpServer = new_server("127.0.0.1", 0)
+
+func static_path(path: string) -> string
+    if path == "/" then
+        return web_dir + "/index.html"
+    end
+    if path == "/editor.css" || path == "/editor.js" then
+        return web_dir + path
+    end
+    return ""
+end
+
+func token_ok(req: HttpRequest) -> bool
+    if get_header(req.headers, req.header_count, "X-Noxy-Token") == token then
+        return true
+    end
+    return req.query == "t=" + token
+end
+
+func handler(req: HttpRequest) -> HttpResponse
+    if req.method == "GET" then
+        let file: string = static_path(req.path)
+        if file != "" then
+            return serve_static(file)
+        end
+        return response_404()
+    end
+    if req.method == "POST" && req.path == "/event" then
+        if !token_ok(req) then
+            return response_error(403, "token invalido")
+        end
+        if !is_valid_utf8(req.body) then
+            return response_error(400, "corpo nao e UTF-8")
+        end
+        let reply: chan any = make_chan(1)
+        chan_send(inbox, Request(to_str(req.body), reply))
+        let out: string = chan_recv(reply)
+        if out == "" then
+            return response_error(400, "evento invalido")
+        end
+        return response_json(out)
+    end
+    return response_404()
+end
+
+func serve_forever() -> void
+    serve(ref server, handler)
+end
+
+// start faz o bind numa porta efemera e serve numa routine; devolve a
+// porta, ou 0 se nao conseguiu.
+func start(web: string, tok: string) -> int
+    web_dir = web
+    token = tok
+    if !bind_server(ref server) then
+        return 0
+    end
+    spawn(serve_forever)
+    return server.port
+end
+
+func stop() -> void
+    stop_server(ref server)
+end

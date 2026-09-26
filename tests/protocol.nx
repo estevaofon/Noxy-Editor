@@ -1,0 +1,94 @@
+// tests/protocol.nx — o pipeline inteiro menos o navegador: sobe o
+// servidor na porta 0 com o loop dono numa routine e faz POSTs reais.
+//     noxy tests/protocol.nx      (a partir da raiz do projeto)
+use sys
+use io
+use strings
+use http_client
+use src.session as session
+use src.events as events
+use src.server as server
+
+let fails = 0
+let total = 0
+
+func check(name: string, cond: bool) -> void
+    total = total + 1
+    if cond then
+        print(f"  ok   {name}")
+    else
+        print(f"FAIL   {name}")
+        fails = fails + 1
+    end
+end
+
+func write_file(path: string, text: string) -> void
+    let f: io.File = io.open(path, "w")
+    io.write(f, text)
+    io.close(f)
+end
+
+let root: string = sys.getcwd() + "/tests/tmp/protocol"
+io.mkdir(root)
+write_file(root + "/p.nx", "let p = 1\n")
+
+let s: session.Session = session.new_session(root)
+session.load(ref s)
+
+func owner() -> void
+    while !s.quitting do
+        let r: any = chan_recv(server.inbox)
+        let req: server.Request = r
+        let now: int = time_now()
+        chan_send(req.reply, events.dispatch(ref s, req.body, now))
+    end
+end
+
+func post(base: string, tok: string, body: string) -> http_client.ClientResponse
+    let c: http_client.HttpClient = http_client.new_client()
+    let hs: string[64]
+    hs[0] = "X-Noxy-Token: " + tok
+    hs[1] = "Content-Type: application/json"
+    return http_client.request(ref c, "POST", base + "/event", hs, 2, to_bytes(body))
+end
+
+let port: int = server.start(sys.getcwd() + "/web", "segredo")
+check("bind numa porta efemera", port > 0)
+spawn(owner)
+let base: string = "http://127.0.0.1:" + to_str(port)
+
+let page: http_client.ClientResponse = http_client.get(base + "/?t=segredo")
+check("GET / serve a pagina", page.status_code == 200 && strings.contains(to_str(page.body), "<title>Noxy Editor</title>"))
+let css: http_client.ClientResponse = http_client.get(base + "/editor.css")
+check("GET /editor.css", css.status_code == 200)
+let nope: http_client.ClientResponse = http_client.get(base + "/outro")
+check("GET desconhecido e 404", nope.status_code == 404)
+
+let no_token: http_client.ClientResponse = http_client.post(base + "/event", to_bytes("{\"kind\":\"init\"}"))
+check("POST sem token e 403", no_token.status_code == 403)
+let bad: http_client.ClientResponse = post(base, "segredo", "{nope")
+check("POST com JSON invalido e 400", bad.status_code == 400)
+
+let init: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"init\",\"rows\":10,\"tree_version\":0}")
+let body: string = to_str(init.body)
+check("init devolve o quadro com a arvore", init.status_code == 200 && strings.contains(body, "\"name\":\"p.nx\"") && strings.contains(body, "\"tabs\":[]"))
+post(base, "segredo", "{\"kind\":\"tree_open\",\"path\":\"" + root + "/p.nx\",\"rows\":10,\"tree_version\":2}")
+post(base, "segredo", "{\"kind\":\"key\",\"key\":\"end\",\"rows\":10,\"tree_version\":2}")
+let typed: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"text\",\"text\":\"0\",\"rows\":10,\"tree_version\":2}")
+let tbody: string = to_str(typed.body)
+check("abrir, end e digitar refletem no quadro", strings.contains(tbody, "\"t\":\"10\"") && strings.contains(tbody, "\"dirty\":true") && strings.contains(tbody, "\"tree\":[]"))
+let beacon: http_client.ClientResponse = http_client.post(base + "/event?t=segredo", to_bytes("{\"kind\":\"quit\",\"rows\":10,\"tree_version\":2}"))
+check("quit com token na query (sendBeacon) e aceito", beacon.status_code == 200)
+let waited: int = 0
+while !s.quitting && waited < 50 do
+    sys.sleep(20)
+    waited = waited + 1
+end
+check("quit encerra o loop dono", s.quitting)
+server.stop()
+
+print("")
+print(f"{total - fails}/{total} passaram")
+if fails > 0 then
+    sys.exit(1)
+end
