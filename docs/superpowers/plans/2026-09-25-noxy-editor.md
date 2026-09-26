@@ -801,7 +801,7 @@ git commit -m "feat(history): undo e redo por snapshot com agrupamento de digita
 
 **Interfaces:**
 - Consumes: `doc.*`, `history.*`.
-- Produces: `Editor(doc, cursor, anchor, top, goal_col, history)`; `new_editor(d)`, `has_sel(ed)`, `sel_range(ed) -> Range`, `snapshot(ed)`, `first_non_space(line)`, `ensure_visible(ref ed, rows)`, `scroll(ref ed, delta, rows)`, `place(ref ed, p, shift, rows)`, `move_left/right/up/down/home/end/doc_start/doc_end/word_left/word_right(ref ed, shift, rows)`, `page_up/page_down(ref ed, shift, rows)`, `select_all(ref ed)`, `select_word_at(ref ed, p, rows)`, `select_line(ref ed, n, rows)`, `click(ref ed, p, shift, rows)`, `drag(ref ed, p, rows)`. A Task 6 acrescenta o resto ao mesmo arquivo.
+- Produces: `Editor(doc, cursor, anchor, top, goal_col, history)`; `new_editor(d)`, `has_sel(ed)`, `sel_range(ed) -> Range`, `snapshot(ed)`, `first_non_space(line)`, `ensure_visible(ref ed, rows)`, `scroll(ref ed, delta, rows)`, `place(ref ed, p, shift, rows)`, `move_left/right/up/down/home/end/doc_start/doc_end/word_left/word_right(ref ed, shift, rows)`, `page_up/page_down(ref ed, shift, rows)`, `select_all(ref ed)`, `select_word_at(ref ed, p, rows)`, `select_line(ref ed, n, rows)`, `click(ref ed, p, shift, rows)`, `drag(ref ed, p, rows)`, `copy(ed) -> string` (os testes de seleção leem por ele). A Task 6 acrescenta o resto ao mesmo arquivo.
 
 - [ ] **Passo 1: o teste que falha**
 
@@ -893,7 +893,7 @@ Esperado: erro de compilação: módulo `src.editing` não pôde ser carregado.
 
 - [ ] **Passo 3: implementar a primeira metade**
 
-`src/editing.nx` termina, por enquanto, em `drag`. As funções são declaradas antes de quem as chama; mantenha a ordem.
+`src/editing.nx` termina, por enquanto, em `copy`. As funções são declaradas antes de quem as chama; mantenha a ordem.
 
 ```noxy
 // src/editing.nx — o editor de uma aba: cursor, ancora da selecao, scroll e
@@ -1214,6 +1214,15 @@ func drag(ed: ref Editor, p: doc.Pos, rows: int) -> void
     ed.cursor = doc.clamp(ed.doc, p)
     ensure_visible(ed, rows)
 end
+
+// copy sem selecao devolve a linha inteira com a quebra (VS Code).
+func copy(ed: Editor) -> string
+    if has_sel(ed) then
+        let r: doc.Range = sel_range(ed)
+        return doc.text_range(ed.doc, r.start, r.stop)
+    end
+    return ed.doc.lines[ed.cursor.line] + "\n"
+end
 ```
 
 - [ ] **Passo 4: ver passar**
@@ -1237,7 +1246,7 @@ git commit -m "feat(editing): cursor, selecao, movimento por caractere, palavra 
 
 **Interfaces:**
 - Consumes: tudo da Task 5.
-- Produces: `insert_text(ref ed, text, rows, now)`, `paste(ref ed, text, rows, now)`, `newline(ref ed, rows, now)`, `backspace(ref ed, rows, now)`, `delete_forward(ref ed, rows, now)`, `tab(ref ed, shift, rows, now)`, `toggle_comment(ref ed, rows, now)`, `copy(ed) -> string`, `cut(ref ed, rows, now) -> string`, `undo(ref ed, rows)`, `redo(ref ed, rows)`. `now` é `time_now()` em ms; os testes passam constantes.
+- Produces: `insert_text(ref ed, text, rows, now)`, `paste(ref ed, text, rows, now)`, `newline(ref ed, rows, now)`, `backspace(ref ed, rows, now)`, `delete_forward(ref ed, rows, now)`, `tab(ref ed, shift, rows, now)`, `toggle_comment(ref ed, rows, now)`, `cut(ref ed, rows, now) -> string`, `undo(ref ed, rows)`, `redo(ref ed, rows)`. `now` é `time_now()` em ms; os testes passam constantes.
 
 - [ ] **Passo 1: o teste que falha**
 
@@ -1533,15 +1542,6 @@ func toggle_comment(ed: ref Editor, rows: int, now: int) -> void
     ed.cursor = doc.clamp(ed.doc, ed.cursor)
     ed.anchor = doc.clamp(ed.doc, ed.anchor)
     ensure_visible(ed, rows)
-end
-
-// copy sem selecao devolve a linha inteira com a quebra (VS Code).
-func copy(ed: Editor) -> string
-    if has_sel(ed) then
-        let r: doc.Range = sel_range(ed)
-        return doc.text_range(ed.doc, r.start, r.stop)
-    end
-    return ed.doc.lines[ed.cursor.line] + "\n"
 end
 
 func cut(ed: ref Editor, rows: int, now: int) -> string
