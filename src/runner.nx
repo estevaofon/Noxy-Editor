@@ -1,0 +1,77 @@
+// src/runner.nx — roda um arquivo .nx numa task e recolhe a saida quando
+// termina. Nao conhece a sessao: recebe a raiz e o caminho relativo. O
+// programa roda com a raiz como cwd (noxy.mod e caminhos relativos
+// funcionam como no terminal) e com a entrada em /dev/null, para input()
+// devolver "" em vez de travar. Nao ha como interromper um programa que
+// nao termina (docs/ACHADOS.md).
+use sys
+use strings select replace, ends_with
+
+struct RunState
+    running: bool
+    task: any          // handle de spawn_task; null parado
+    text: string       // o conteudo do painel de saida
+    version: int       // muda a cada alteracao de text ou running
+    cmd: string
+end
+
+func new_run() -> RunState
+    return RunState(false, null, "", 0, "")
+end
+
+func shell_quote(s: string) -> string
+    return "'" + replace(s, "'", "'\\''") + "'"
+end
+
+func command(root: string, rel: string) -> string
+    if sys.os() == "windows" then
+        return "cd /d \"" + root + "\" && noxy \"" + rel + "\" < NUL 2>&1"
+    end
+    return "cd " + shell_quote(root) + " && noxy " + shell_quote(rel) + " < /dev/null 2>&1"
+end
+
+// exec_cmd e a funcao da task: bloqueia ate o programa terminar.
+func exec_cmd(cmd: string) -> sys.SysResult
+    return sys.exec_output(cmd)
+end
+
+// start dispara a execucao; devolve "" ou a mensagem de recusa.
+func start(r: ref RunState, root: string, rel: string) -> string
+    if r.running then
+        return "ja esta rodando"
+    end
+    r.cmd = command(root, rel)
+    r.text = "$ noxy " + rel + "\n"
+    r.running = true
+    r.version = r.version + 1
+    r.task = spawn_task(exec_cmd, r.cmd)
+    return ""
+end
+
+// poll recolhe o resultado se a task terminou; chamado a cada evento.
+func poll(r: ref RunState) -> void
+    if !r.running then
+        return
+    end
+    let env: any = task_await(r.task, 0)
+    if env["status"] == "timeout" then
+        return
+    end
+    if env["status"] == "ok" then
+        let res: sys.SysResult = env["value"]
+        r.text = r.text + res.output
+        if length(res.output) > 0 && !ends_with(res.output, "\n") then
+            r.text = r.text + "\n"
+        end
+        if res.output == "" && res.error != "" then
+            r.text = r.text + res.error + "\n"
+        end
+        r.text = r.text + "[saiu com " + to_str(res.exit_code) + "]"
+    else
+        let err: any = env["error"]
+        r.text = r.text + "falha ao executar: " + to_str(err["message"])
+    end
+    r.running = false
+    r.task = null
+    r.version = r.version + 1
+end

@@ -6,6 +6,8 @@ use src.lexer as lexer
 use io
 use src.history as history
 use src.editing as editing
+use src.runner as runner
+use strings
 
 let fails = 0
 let total = 0
@@ -300,9 +302,60 @@ func test_editing_text() -> void
 
 end
 
+func write_file(path: string, text: string) -> void
+    let f: io.File = io.open(path, "w")
+    io.write(f, text)
+    io.close(f)
+end
+
+func read_file(path: string) -> string
+    let f: io.File = io.open(path, "r")
+    let r: io.IOResult = io.read(f)
+    io.close(f)
+    return r.data
+end
+
+func tmp_root() -> string
+    let root: string = sys.getcwd() + "/tests/tmp/run"
+    io.mkdir(root + "/sub")
+    io.remove(root + "/bin.nx")    // sobra do teste de UTF-8 da rodada anterior
+    write_file(root + "/b.nx", "let b = 1\n")
+    write_file(root + "/a.txt", "texto\n")
+    write_file(root + "/.hidden", "")
+    write_file(root + "/sub/c.nx", "print(\"c\")\n")
+    write_file(root + "/hello.nx", "use sys\nprint(\"oi\")\nsys.exit(3)\n")
+    return root
+end
+
+func test_runner() -> void
+    print("runner")
+    let root: string = tmp_root()
+    let r: runner.RunState = runner.new_run()
+    check("comando com cd, aspas e /dev/null", runner.command("/x y", "a'b.nx") == "cd '/x y' && noxy 'a'\\''b.nx' < /dev/null 2>&1")
+    check("start", runner.start(ref r, root, "hello.nx") == "" && r.running && r.version == 1)
+    check("start durante execucao recusa", runner.start(ref r, root, "hello.nx") == "ja esta rodando")
+    let waited: int = 0
+    while r.running && waited < 100 do
+        sys.sleep(50)
+        runner.poll(ref r)
+        waited = waited + 1
+    end
+    check("poll recolhe a saida e o codigo", !r.running && r.text == "$ noxy hello.nx\noi\n[saiu com 3]" && r.version == 2)
+    let bad: runner.RunState = runner.new_run()
+    runner.start(ref bad, root, "nao.nx")
+    waited = 0
+    while bad.running && waited < 100 do
+        sys.sleep(50)
+        runner.poll(ref bad)
+        waited = waited + 1
+    end
+    check("arquivo inexistente mostra o erro do noxy", !bad.running && strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
+end
+
 test_document()
 test_lexer()
 test_history()
 test_editing_moves()
 test_editing_text()
+test_runner()
 report()
