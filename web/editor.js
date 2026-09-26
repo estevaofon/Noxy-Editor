@@ -535,7 +535,7 @@
       nodes.push(row);
     }
     els.searchResults.replaceChildren(...nodes);
-    els.searchStatus.textContent = sr.query ? (sr.hits.length ? sr.hits.length + (sr.truncated ? "+" : "") + " ocorrências" : "sem resultados") : "";
+    els.searchStatus.textContent = sr.query ? (sr.hits.length ? sr.hits.length + (sr.truncated ? "+" : "") + (sr.hits.length === 1 ? " ocorrência" : " ocorrências") : "sem resultados") : "";
   }
   els.searchInput.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !["a", "c", "v", "x", "z"].includes(e.key.toLowerCase())) { onKeyDown(e); e.stopPropagation(); return; }

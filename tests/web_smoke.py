@@ -94,6 +94,7 @@ check("titulo inicial", ev("document.title") == "Noxy Editor")
 settle(800)
 check("git: branch na barra de status", "demo-branch" in ev("document.getElementById('status-git').textContent"))
 check("git: arquivo modificado marcado na arvore", ev("Array.from(document.querySelectorAll('#tree .node')).find(n => n.textContent.includes('notas.txt')).classList.contains('git-M')"))
+check("git: e a cor aparece (diferente de um arquivo limpo)", ev("(() => { const f = (t) => getComputedStyle(Array.from(document.querySelectorAll('#tree .node')).find(n => n.textContent.includes(t)).querySelector('.name')).color; return f('notas.txt') !== f('longo.nx'); })()"))
 check("tema escuro aplicado no html", ev("document.documentElement.classList.contains('theme-dark')"))
 # abrir exemplo.nx pela arvore
 ev("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
