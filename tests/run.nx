@@ -20,6 +20,7 @@ use src.find as find
 use src.search as search
 use src.recovery as recovery
 use src.gitinfo as gitinfo
+use src.minimap as minimap
 
 // cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
 // ~/.config de quem roda
@@ -949,6 +950,35 @@ func test_git_session() -> void
     check("comando git_refresh", s.git_task != null)
 end
 
+func test_minimap() -> void
+    print("minimap")
+    let d: doc.Document = doc.from_text("m.nx", "let x = 1\n\n    // nota\nprint(x)\n" + strings.repeat("y", 300))
+    let sh: int[] = minimap.shape(d)
+    check("dois inteiros por linha", length(sh) == 10)
+    check("comprimento e kind do primeiro token nao espaco", sh[0] == 9 && sh[1] == minimap.kind_index("keyword") && sh[2] == 0 && sh[3] == 0 && sh[5] == minimap.kind_index("comment") && sh[7] == minimap.kind_index("call"))
+    check("comprimento limitado a 120", sh[8] == 120)
+    check("indentacao conta no comprimento", sh[4] == 11)
+
+    let root: string = tmp_root()
+    let s: session.Session = session.new_session(root)
+    session.load(ref s)
+    let lines: string = ""
+    for i in range(200) do
+        lines = lines + "let v" + to_str(i) + " = " + to_str(i) + "\n"
+    end
+    write_file(root + "/longo.nx", lines)
+    session.open_file(ref s, root + "/longo.nx")
+    let sem: string = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 1)
+    check("sem pedir, o minimap vem vazio", strings.contains(sem, "\"minimap\":{\"lines\":[],\"path\":\"\"}"))
+    let com: string = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2,\"want_minimap\":true}", 1)
+    check("pedindo, vem o formato do arquivo ativo", strings.contains(com, "\"path\":\"" + root + "/longo.nx\"") && strings.contains(com, "\"lines\":[10,1,"))
+    events.dispatch(ref s, "{\"kind\":\"minimap_goto\",\"line\":150,\"rows\":20,\"tree_version\":2}", 1)
+    check("minimap_goto centraliza a linha", s.tabs[s.active].editor.top == 140)
+    events.dispatch(ref s, "{\"kind\":\"minimap_goto\",\"line\":199,\"rows\":20,\"tree_version\":2}", 1)
+    check("minimap_goto nao passa do fim", s.tabs[s.active].editor.top == 181)
+    io.remove(root + "/longo.nx")
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -967,4 +997,5 @@ test_search()
 test_recovery()
 test_gitinfo()
 test_git_session()
+test_minimap()
 report()
