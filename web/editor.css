@@ -78,11 +78,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .k-operator { color: var(--k-operator); }
 .k-punct { color: var(--k-punct); }
 
-/* painel de saida */
-#output { border-top: 1px solid var(--border); background: var(--bg-side); max-height: 40vh; display: flex; flex-direction: column; }
+/* painel de saida: a altura vem do JS (35% da area na primeira vez, depois
+   o que o usuario arrastou); o divisor no topo redimensiona */
+#output { position: relative; background: var(--bg-side); display: flex; flex-direction: column; min-height: 100px; }
+#output-resize { flex: none; height: 6px; cursor: ns-resize; border-top: 1px solid var(--border); }
+#output-resize:hover, #output.resizing #output-resize { background: var(--accent); }
+#output.resizing { user-select: none; }
 #output-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 12px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
 #output-close { color: var(--fg-dim); font-size: 16px; line-height: 1; }
-#output-text { margin: 0; padding: 4px 14px 10px; overflow: auto; font: 13px var(--font-mono); white-space: pre-wrap; }
+#output-text { flex: 1; min-height: 0; margin: 0; padding: 4px 14px 10px; overflow: auto; font: 13px var(--font-mono); white-space: pre-wrap; }
 
 /* barra de status */
 #status { display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--bg-status); border-top: 1px solid var(--border); font-size: 12px; color: var(--fg-dim); }

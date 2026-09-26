@@ -132,6 +132,22 @@ check("F5 mostra o painel de saida", not ev("document.getElementById('output').c
 out = ev("document.getElementById('output-text').textContent")
 check("saida do programa aparece", "$ noxy exemplo.nx" in out and "[saiu com" in out)
 print("SAIDA:", out.replace("\n", " | ")[:200])
+# painel de saida: altura inicial de 35% da area, divisor arrastavel, Ctrl+J alterna
+def output_h(): return ev("document.getElementById('output').getBoundingClientRect().height")
+main_h = ev("document.getElementById('main').clientHeight")
+h0 = output_h()
+check("painel de saida abre com 35%% da area (%.0f de %.0f px)" % (h0, main_h), abs(h0 - 0.35 * main_h) < 3)
+grip = ev("(() => { const g = document.getElementById('output-resize'); if (!g) return null; const r = g.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+check("divisor do painel existe", grip is not None)
+if grip:
+    mouse("mousePressed", grip[0], grip[1]); mouse("mouseMoved", grip[0], grip[1] - 120); settle(); mouse("mouseReleased", grip[0], grip[1] - 120); settle()
+    h1 = output_h()
+    check("arrastar o divisor para cima aumenta o painel (%.0f -> %.0f px)" % (h0, h1), abs((h1 - h0) - 120) < 3)
+    check("altura lembrada no localStorage", ev("localStorage.getItem('noxy-editor.output-h')") is not None)
+key("j", mods=2)
+check("ctrl+j esconde o painel", ev("document.getElementById('output').classList.contains('hidden')"))
+key("j", mods=2)
+check("ctrl+j de novo mostra o painel", not ev("document.getElementById('output').classList.contains('hidden')"))
 # digitar de novo para sujar, entao fechar pelo x: modal
 key("End"); insert("!")
 ev("document.querySelector('.tab .close').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()

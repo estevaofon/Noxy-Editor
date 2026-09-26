@@ -10,7 +10,7 @@
   const els = {
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
     editor: $("editor"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
-    output: $("output"), outputText: $("output-text"), outputClose: $("output-close"),
+    main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"),
     status: $("status"), statusLeft: $("status-left"), statusMsg: $("status-msg"), statusRight: $("status-right"),
     modal: $("modal"), modalText: $("modal-text"), modalButtons: $("modal-buttons"),
     input: $("input"),
@@ -93,7 +93,7 @@
     if (f.output.version !== outputVersion) {
       outputVersion = f.output.version;
       if (f.output.version > 0) {
-        els.output.classList.remove("hidden");
+        showOutput(true);
         els.outputText.textContent = f.output.text + (f.output.running ? "\n…" : "");
         els.outputText.scrollTop = els.outputText.scrollHeight;
       }
@@ -234,6 +234,7 @@
       if (key === "c") { e.preventDefault(); send({ kind: "copy" }); return; }
       if (key === "x") { e.preventDefault(); send({ kind: "cut" }); return; }
       if (key === "v") return;
+      if (key === "j") { e.preventDefault(); showOutput(els.output.classList.contains("hidden")); return; }
       if (CTRL[key]) { e.preventDefault(); send({ kind: "key", key, ctrl: true, shift: e.shiftKey, alt: e.altKey }); }
       return;
     }
@@ -330,9 +331,44 @@
     if (lines !== 0) { wheelAcc -= lines * LINE_H; send({ kind: "scroll", delta: lines }); }
   }, { passive: false });
 
+  // ---- painel de saida: altura inicial de 35% da area, divisor arrastavel,
+  // altura lembrada por navegador (localStorage e conveniencia, nunca estado)
+  const OUTPUT_H_KEY = "noxy-editor.output-h";
+  let resizing = null;
+  function clampOutputHeight(h) {
+    const max = Math.floor(els.main.clientHeight * 0.8);
+    return Math.max(100, Math.min(Math.round(h), max));
+  }
+  function setOutputHeight(h) { els.output.style.height = clampOutputHeight(h) + "px"; }
+  function showOutput(on) {
+    if (!on) { els.output.classList.add("hidden"); return; }
+    if (!els.output.style.height) {
+      let saved = null;
+      try { saved = parseInt(localStorage.getItem(OUTPUT_H_KEY), 10); } catch (err) { saved = null; }
+      setOutputHeight(saved > 0 ? saved : els.main.clientHeight * 0.35);
+    }
+    els.output.classList.remove("hidden");
+  }
+
   // ---- botoes, redimensionar, poll durante execucao, fechamento
   els.runBtn.addEventListener("mousedown", (e) => { e.preventDefault(); send({ kind: "run" }); });
-  els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); els.output.classList.add("hidden"); });
+  els.outputClose.addEventListener("mousedown", (e) => { e.preventDefault(); showOutput(false); });
+  els.outputResize.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    resizing = { y: e.clientY, h: els.output.getBoundingClientRect().height };
+    els.output.classList.add("resizing");
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!resizing) return;
+    setOutputHeight(resizing.h + (resizing.y - e.clientY));
+  });
+  document.addEventListener("mouseup", () => {
+    if (!resizing) return;
+    resizing = null;
+    els.output.classList.remove("resizing");
+    try { localStorage.setItem(OUTPUT_H_KEY, String(Math.round(els.output.getBoundingClientRect().height))); } catch (err) { /* sem storage: so nao lembra */ }
+  });
   new ResizeObserver(() => {
     const r = rowsNow();
     if (r !== rows) { rows = r; send({ kind: "poll" }); }
