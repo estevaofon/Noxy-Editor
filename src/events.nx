@@ -15,6 +15,7 @@ use src.settings as settings
 use src.commands as commands
 use src.index as index
 use src.find as find
+use src.term as term
 
 
 struct Event
@@ -36,10 +37,11 @@ struct Event
     search_version: int    // a versao dos resultados da busca na pasta que o cliente tem
     git_version: int       // a versao do status do git que o cliente tem
     want_minimap: bool     // o cliente quer o formato do arquivo para o minimap
+    cols: int              // tamanho do terminal no cliente
 end
 
 func empty_event() -> Event
-    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0, false)
+    return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0, 0, false, 0)
 end
 
 // now e o relogio do dono do estado, em milissegundos. time_now() da
@@ -414,6 +416,16 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
         end
     elif e.kind == "find_close" then
         close_find(ref s)
+    elif e.kind == "term_open" then
+        session.show_panel(ref s, "terminal")
+        term.open(ref s.term, s.root, e.cols, e.rows)
+        if s.term.error != "" then
+            s.message = "terminal: " + s.term.error
+        end
+    elif e.kind == "term_close" then
+        term.close(ref s.term)
+    elif e.kind == "term_resize" then
+        term.resize(ref s.term, e.cols, e.rows)
     elif e.kind == "minimap_goto" then
         if s.active >= 0 then
             editing.scroll_to(ref s.tabs[s.active].editor, e.line - s.rows / 2, s.rows)

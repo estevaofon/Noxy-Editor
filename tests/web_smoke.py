@@ -22,7 +22,7 @@ _shg.rmtree(os.path.join(demo, ".git"), ignore_errors=True)
 subprocess.run("git init -q -b demo-branch && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init", shell=True, cwd=demo, check=True)
 open(os.path.join(demo, "notas.txt"), "a").write("mudou\n")
 cfg = os.path.join(os.getcwd(), "tests", "tmp", "web_config")
-env = dict(os.environ, NOXY_EDITOR_NO_WINDOW="1", NOXY_EDITOR_CONFIG_DIR=cfg, NOXY_EDITOR_CACHE_DIR=os.path.join(os.getcwd(), "tests", "tmp", "web_cache"))
+env = dict(os.environ, NOXY_EDITOR_NO_WINDOW="1", SHELL="/bin/sh", NOXY_EDITOR_CONFIG_DIR=cfg, NOXY_EDITOR_CACHE_DIR=os.path.join(os.getcwd(), "tests", "tmp", "web_cache"))
 import shutil as _sh; _sh.rmtree(env["NOXY_EDITOR_CACHE_DIR"], ignore_errors=True)
 if os.path.exists(os.path.join(cfg, "settings.json")): os.remove(os.path.join(cfg, "settings.json"))
 log = os.path.join("tests", "tmp", "web_editor.log")
@@ -46,12 +46,27 @@ def check(name, cond):
     if not cond: fails += 1
 def settle(ms=350): time.sleep(ms / 1000)
 def key(k, text=None, mods=0, code=None):
-    p = {"type": "keyDown", "key": k, "modifiers": mods, "windowsVirtualKeyCode": 0}
+    # o codigo da tecla: o editor le e.key, mas o xterm le keyCode
+    codes = {"Enter": 13, "Escape": 27, "Tab": 9, "Backspace": 8, "Home": 36, "End": 35, "F5": 116, "F3": 114, "`": 192}
+    vk = codes.get(k, ord(k.upper()) if len(k) == 1 and k.isalpha() else 0)
+    p = {"type": "keyDown", "key": k, "modifiers": mods, "windowsVirtualKeyCode": vk}
+    if k == "Enter" and not mods: text = "\r"
     if text: p["text"] = text
     ws.call("Input.dispatchKeyEvent", p)
     p["type"] = "keyUp"; p.pop("text", None)
     ws.call("Input.dispatchKeyEvent", p)
     settle()
+# click_real clica com o mouse de verdade no centro do elemento (passa pelo
+# pointerdown, diferente de dispatchEvent)
+def click_real(selector):
+    c = ev(f"(() => {{ const r = document.querySelector('{selector}').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }})()")
+    mouse("mousePressed", c[0], c[1]); mouse("mouseReleased", c[0], c[1]); settle()
+
+# type_keys digita tecla por tecla (keyDown com texto), como um teclado real;
+# o xterm ignora texto inserido sem tecla depois de um atalho interceptado
+def type_keys(text):
+    for ch in text:
+        key(ch, text=ch)
 def insert(text):
     ws.call("Input.insertText", {"text": text}); settle()
 # cursor_diff: distancia entre a barra do cursor e o caret real na coluna
@@ -160,7 +175,7 @@ check("git: salvar e rodar marcam o arquivo na arvore e na aba", ev("Array.from(
 key("p", mods=2); ws.call("Input.insertText", {"text": "sem_fim"}); settle(); key("Enter")
 key("F5"); settle(1200)
 check("saida ao vivo enquanto roda", "volta 2" in ev("document.getElementById('output-text').textContent") and not ev("document.getElementById('run-stop').classList.contains('hidden')"))
-ev("document.getElementById('run-stop').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle(1500)
+click_real("#run-stop"); settle(1500)
 check("parar encerra e esconde o botao", "[interrompido]" in ev("document.getElementById('output-text').textContent") and ev("document.getElementById('run-stop').classList.contains('hidden')"))
 ev("document.querySelector('.tab.active .close').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
 print("SAIDA:", out.replace("\n", " | ")[:200])
@@ -176,13 +191,13 @@ if grip:
     h1 = output_h()
     check("arrastar o divisor para cima aumenta o painel (%.0f -> %.0f px)" % (h0, h1), abs((h1 - h0) - 120) < 3)
     check("altura lembrada no localStorage", ev("localStorage.getItem('noxy-editor.output-h')") is not None)
-head = ev("(() => { const r = document.getElementById('output-head').getBoundingClientRect(); return [r.left + 60, r.top + r.height / 2]; })()")
+head = ev("(() => { const r = document.getElementById('output-head').getBoundingClientRect(); return [r.left + r.width * 0.6, r.top + r.height / 2]; })()")   # parte vazia da barra, fora das abas
 h2 = output_h()
 mouse("mousePressed", head[0], head[1]); mouse("mouseMoved", head[0], head[1] + 80); settle(); mouse("mouseReleased", head[0], head[1] + 80); settle()
 h3 = output_h()
-check("arrastar pela barra SAIDA tambem redimensiona (%.0f -> %.0f px)" % (h2, h3), abs((h3 - h2) + 80) < 3)
+check("arrastar pela parte vazia da barra do painel tambem redimensiona (%.0f -> %.0f px)" % (h2, h3), abs((h3 - h2) + 80) < 3)
 check("aba Saida ativa apos F5", ev("document.querySelector('#panel-tabs .ptab.active').dataset.tab") == "output")
-ev("document.querySelector('#panel-tabs .ptab[data-tab=\"search\"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
+click_real('#panel-tabs .ptab[data-tab=\"search\"]')
 check("clicar na aba Busca troca a aba", ev("document.querySelector('#panel-tabs .ptab.active').dataset.tab") == "search" and not ev("document.getElementById('search-view').classList.contains('hidden')"))
 key("f", mods=10)
 check("ctrl+shift+f foca o campo de busca na pasta", ev("document.activeElement.id") == "search-input")
@@ -259,6 +274,27 @@ ws.call("Page.navigate", {"url": "file://" + page}); settle(2000)
 check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 5)
 time.sleep(3.5)
 check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 5)
+# terminal: ctrl+` abre um shell de verdade no painel, com foco
+key("`", mods=2); settle(1500)
+check("ctrl+` abre a aba Terminal com o xterm", ev("document.querySelector('#panel-tabs .ptab.active').dataset.tab") == "terminal" and ev("!!document.querySelector('#term-view .xterm')"))
+check("o foco vai para o terminal", ev("!!document.activeElement.closest('#term-view')"))
+ws.call("Input.insertText", {"text": "echo ok_terminal_$((1+1))"}); key("Enter"); settle(1200)
+check("o shell responde no xterm", "ok_terminal_2" in ev("document.querySelector('#term-view .xterm-rows').textContent"))
+key("Escape"); settle(300)
+check("escape vai para o shell, o foco continua no terminal", ev("!!document.activeElement.closest('#term-view')"))
+key("c", mods=2); settle(500)   # ctrl+c limpa o que o escape comecou, em qualquer shell
+key("`", mods=2); settle(300)
+check("ctrl+` com o terminal focado devolve o foco ao editor", ev("document.activeElement.id") == "input")
+click_real('#panel-tabs .ptab[data-tab=\"output\"]')
+key("`", mods=2); settle(800)
+check("o terminal continua o mesmo ao voltar a aba", "ok_terminal_2" in ev("document.querySelector('#term-view .xterm-rows').textContent"))
+type_keys("exit"); key("Enter"); settle(2000)
+check("fim do shell avisa no terminal", "terminal encerrado" in ev("document.querySelector('#term-view .xterm-rows').textContent").replace('\xa0', ' '))
+key("Enter"); settle(1500)
+type_keys("echo de_novo_$((2+3))"); key("Enter"); settle(1200)
+check("enter abre outro shell", "de_novo_5" in ev("document.querySelector('#term-view .xterm-rows').textContent"))
+key("`", mods=2); settle(300)
+
 # recuperacao: editar sem salvar, esperar a copia (poll 1,5 s depois da
 # ultima edicao), matar o editor e abrir outro: a aba volta suja
 ev("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()

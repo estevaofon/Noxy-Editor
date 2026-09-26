@@ -13,6 +13,7 @@ use src.find as find
 use src.search as search
 use src.recovery as recovery
 use src.gitinfo as gitinfo
+use src.term as term
 
 struct Tab
     editor: editing.Editor
@@ -94,6 +95,7 @@ struct Session
     recovery_warned: bool   // ja avisou que nao consegue gravar copias
     git: gitinfo.GitInfo
     git_task: any           // task de gitinfo.collect; null parada
+    term: term.Term
 end
 
 // Search e a busca na pasta: a consulta, a task e os resultados; version
@@ -207,6 +209,15 @@ func poll_git(s: ref Session) -> void
     s.git_task = null
 end
 
+// shutdown e o fim do editor: fecha o terminal e para o programa em
+// execucao, para nada ficar rodando depois da janela fechar.
+func shutdown(s: ref Session, now: int) -> void
+    term.close(ref s.term)
+    if s.run.running then
+        runner.stop(ref s.run, now)
+    end
+end
+
 // recovery_tick grava a copia das abas sujas cujo texto mudou desde a
 // ultima copia, no maximo uma vez por COPY_EVERY_MS; force (bye) grava na hora.
 func recovery_tick(s: ref Session, now: int, force: bool) -> void
@@ -289,7 +300,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0), false, gitinfo.empty_git(), null)
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0), false, gitinfo.empty_git(), null, term.new_term())
 end
 
 func basename(path: string) -> string

@@ -1,0 +1,87 @@
+// src/term.nx — o terminal do editor sobre a extensao noxy_pty. Abrir,
+// fechar e redimensionar passam pelo dono do estado (mudam o quadro); ler e
+// escrever passam por read e write, chamados direto pelas rotas /term do
+// servidor, fora do dono: o terminal nao e estado do editor. current_id e o
+// terminal que as rotas aceitam (0 = nenhum). Os dados vao e voltam em
+// base64, sem decodificar aqui.
+use sys
+use errors select *
+use strings select contains
+use github_com.estevaofon.noxy_pty.noxy_pty as pty
+
+struct Term
+    open: bool
+    id: int
+    error: string      // por que nao abriu; "" sem erro
+    cols: int
+    rows: int
+end
+
+struct ReadResult
+    ok: bool
+    data: string       // base64; "" no timeout
+    exited: bool       // o processo do terminal terminou
+    error: string
+end
+
+let current_id: int = 0
+
+func new_term() -> Term
+    return Term(false, 0, "", 80, 24)
+end
+
+func shell() -> string
+    let e: sys.EnvResult = sys.getenv("SHELL")
+    if e.ok && e.value != "" then
+        return e.value
+    end
+    return "/bin/sh"
+end
+
+// open abre um shell em cwd; com um terminal aberto nao faz nada.
+func open(t: ref Term, cwd: string, cols: int, rows: int) -> void
+    if t.open then
+        return
+    end
+    let r = call_result(pty.open, shell(), cwd, cols, rows)
+    if !r.ok then
+        t.error = r.failure.message
+        return
+    end
+    t.open = true
+    t.id = r.value
+    t.error = ""
+    t.cols = cols
+    t.rows = rows
+    current_id = t.id
+end
+
+func close(t: ref Term) -> void
+    if t.id > 0 then
+        call_result(pty.close, t.id)
+    end
+    t.open = false
+    current_id = 0
+end
+
+func resize(t: ref Term, cols: int, rows: int) -> void
+    if !t.open || cols <= 0 || rows <= 0 then
+        return
+    end
+    call_result(pty.resize, t.id, cols, rows)
+    t.cols = cols
+    t.rows = rows
+end
+
+func read(id: int, timeout_ms: int) -> ReadResult
+    let r = call_result(pty.read, id, timeout_ms)
+    if r.ok then
+        return ReadResult(true, r.value, false, "")
+    end
+    let exited: bool = contains(r.failure.message, "exited")
+    return ReadResult(false, "", exited, r.failure.message)
+end
+
+func write(id: int, data_b64: string) -> bool
+    return call_result(pty.write, id, data_b64).ok
+end

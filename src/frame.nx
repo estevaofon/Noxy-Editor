@@ -12,6 +12,7 @@ use src.find as find
 use src.search as search
 use src.gitinfo as gitinfo
 use src.minimap as minimap
+use src.term as term
 
 struct SpanOut
     k: string       // kind do token
@@ -108,6 +109,7 @@ struct Frame
     search: SearchOut
     git: gitinfo.GitInfo       // status e dirs vazios quando o cliente ja tem esta versao
     minimap: MinimapOut
+    term: term.Term
 end
 
 // covered: o pedaco [p, q) esta dentro de alguma marca do papel kind?
@@ -281,7 +283,7 @@ func build(s: ref session.Session, client_tree_version: int, client_search_versi
         right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   " + doc.eol_name(ed.doc)
         eol = doc.eol_name(ed.doc)
     end
-    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current), search_out(s, client_search_version), git_out(s, client_git_version), minimap_out(s, want_minimap))
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message, eol), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal, s.panel, s.settings, s.list, FindOut(s.find.open, s.find.replace, s.find.query, s.find.case_sensitive, length(s.find.matches), s.find.current), search_out(s, client_search_version), git_out(s, client_git_version), minimap_out(s, want_minimap), s.term)
     s.clipboard = ""
     return json_dumps(f)
 end

@@ -120,10 +120,13 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #output-head { display: flex; justify-content: space-between; align-items: center; padding: 0 12px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
 #panel-tabs { display: flex; }
 .ptab { padding: 6px 10px; cursor: pointer; border-bottom: 2px solid transparent; }
+#output-head button { cursor: pointer; }
 .ptab:hover { color: var(--fg); }
 .ptab.active { color: var(--fg); border-bottom-color: var(--accent); }
 .pview { flex: 1; min-height: 0; overflow: auto; }
-#search-view, #term-view { padding: 4px 14px 10px; }
+#search-view { padding: 4px 14px 10px; }
+#term-view { padding: 4px 0 0 10px; background: var(--bg-side); }
+#term-view .xterm { height: 100%; }
 .search-row { display: flex; align-items: center; gap: 6px; margin: 4px 0 8px; }
 #search-input { width: 320px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font: 13px var(--font-ui); outline: none; }
 #search-input:focus { border-color: var(--accent); }

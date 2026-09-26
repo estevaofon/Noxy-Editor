@@ -1020,6 +1020,20 @@ func test_term() -> void
     end
     check("fim do shell e reportado como exited", ended)
     term.close(ref x)
+
+    // sair do editor fecha o terminal e para o programa em execucao
+    let z: session.Session = session.new_session(root)
+    session.load(ref z)
+    write_file(root + "/sem_fim.nx", "use sys\nwhile true do\n    sys.sleep(50)\nend\n")
+    runner.start(ref z.run, root, "sem_fim.nx")
+    term.open(ref z.term, root, 80, 24)
+    sys.sleep(300)
+    let zpid: int = z.run.pid
+    session.shutdown(ref z, events.now())
+    sys.sleep(300)
+    check("shutdown para o programa em execucao", !alive(zpid))
+    check("shutdown fecha o terminal", !z.term.open && term.current_id == 0)
+    io.remove(root + "/sem_fim.nx")
 end
 
 test_document()

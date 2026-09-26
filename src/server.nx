@@ -6,6 +6,7 @@
 use http_server select *
 use http_parser select *
 use strings select is_valid_utf8
+use src.term as term
 
 struct Request
     body: string
@@ -24,6 +25,9 @@ func static_path(path: string) -> string
     if path == "/editor.css" || path == "/editor.js" then
         return web_dir + path
     end
+    if path == "/vendor/xterm.js" || path == "/vendor/xterm.css" || path == "/vendor/addon-fit.js" then
+        return web_dir + path
+    end
     return ""
 end
 
@@ -34,6 +38,39 @@ func token_ok(req: HttpRequest) -> bool
     return req.query == "t=" + token
 end
 
+// TermReq e o corpo das rotas /term: o id e, para write, os bytes em base64.
+struct TermReq
+    id: int
+    data: string
+end
+
+// term_route atende /term/read e /term/write fora do dono do estado: so o
+// terminal atual (term.current_id) e aceito; outro id e 404, o que encerra
+// o long-poll de uma pagina antiga.
+func term_route(req: HttpRequest) -> HttpResponse
+    let t: TermReq = TermReq(0, "")
+    if !is_valid_utf8(req.body) || !json_loads(to_str(req.body), ref t) then
+        return response_error(400, "corpo invalido")
+    end
+    if t.id == 0 || t.id != term.current_id then
+        return response_404()
+    end
+    if req.path == "/term/write" then
+        if term.write(t.id, t.data) then
+            return response_json("{\"ok\":true}")
+        end
+        return response_error(500, "escrita no terminal falhou")
+    end
+    let r: term.ReadResult = term.read(t.id, 1000)
+    if r.ok then
+        return response_json("{\"data\":\"" + r.data + "\"}")
+    end
+    if r.exited then
+        return response_json("{\"exited\":true}")
+    end
+    return response_error(500, r.error)
+end
+
 func handler(req: HttpRequest) -> HttpResponse
     if req.method == "GET" then
         let file: string = static_path(req.path)
@@ -41,6 +78,12 @@ func handler(req: HttpRequest) -> HttpResponse
             return serve_static(file)
         end
         return response_404()
+    end
+    if req.method == "POST" && (req.path == "/term/read" || req.path == "/term/write") then
+        if !token_ok(req) then
+            return response_error(403, "token invalido")
+        end
+        return term_route(req)
     end
     if req.method == "POST" && req.path == "/event" then
         if !token_ok(req) then

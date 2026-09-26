@@ -121,6 +121,7 @@ while !s.quitting do
         launch.set_title(title)
     end
 end
+session.shutdown(ref s, events.now())
 server.stop()
 launch.close_window()
 sys.exit(0)

@@ -69,7 +69,7 @@ A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
 | Enter | nova linha com a indentação da atual |
 | Escape | fechar o modal; senão colapsar a seleção |
 | F5 | salvar e rodar o arquivo ativo (`noxy arquivo.nx`), saída no painel |
-| Ctrl+J | mostrar ou ocultar o painel de saída (arraste a barra "Saída" ou o divisor acima dela para redimensionar) |
+| Ctrl+J | mostrar ou ocultar o painel inferior (arraste a barra do painel, fora das abas, ou o divisor acima dela para redimensionar) |
 | Ctrl+Q | sair (pergunta se há abas com alterações) |
 
 Mouse: clique posiciona, arraste seleciona, duplo clique seleciona a palavra,

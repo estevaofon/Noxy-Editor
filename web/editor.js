@@ -185,6 +185,7 @@
     els.runStop.classList.toggle("hidden", !f.output.running);
     renderPanel(f.panel);
     renderSearch(f.search);
+    renderTerm(f);
     renderModal(f.modal);
     renderList(f.list);
     renderFind(f.find);
@@ -398,6 +399,7 @@
     if (e.isComposing) return;
     const key = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "f") wantSearchFocus = true;
+    if ((e.ctrlKey || e.metaKey) && key === "`") wantTermFocus = true;
     if (e.ctrlKey || e.metaKey) {
       if (key === "c") { e.preventDefault(); send({ kind: "copy" }); return; }
       if (key === "x") { e.preventDefault(); send({ kind: "cut" }); return; }
@@ -427,7 +429,7 @@
   function focusInput() {
     if (listKind) return;   // a lista tem o foco
     const a = document.activeElement;
-    if (a && a.closest && (a.closest("#findbar") || a.closest("#search-view"))) return;   // um campo de busca tem o foco
+    if (a && a.closest && (a.closest("#findbar") || a.closest("#search-view") || a.closest("#term-view"))) return;   // busca ou terminal tem o foco
     if (document.activeElement !== els.input) els.input.focus({ preventScroll: true });
   }
   document.addEventListener("mousedown", () => setTimeout(focusInput, 0));
@@ -545,6 +547,98 @@
   });
   els.searchCase.addEventListener("mousedown", (e) => { e.preventDefault(); searchCase = !searchCase; els.searchCase.classList.toggle("on", searchCase); });
 
+  // ---- terminal: xterm.js na aba Terminal. Abrir, fechar e redimensionar
+  // vao pelo /event (mudam o quadro); ler e escrever vao direto a /term/read
+  // (long-poll de ate 1 s) e /term/write, fora do dono do estado do Noxy.
+  // Escape vai para o shell (vim precisa); Ctrl+` ou um clique no editor
+  // devolvem o foco ao editor.
+  let xterm = null, fit = null, termId = 0, termOpening = false, termExited = false, wantTermFocus = false;
+  let sentCols = 0, sentRows = 0, writeChain = Promise.resolve();
+  function termTheme() {
+    const st = getComputedStyle(document.documentElement);
+    const v = (n) => st.getPropertyValue(n).trim();
+    return { background: v("--bg-side"), foreground: v("--fg"), cursor: v("--cursor"), selectionBackground: v("--sel") };
+  }
+  function b64ToBytes(s) { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
+  function bytesToB64(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+  function termPost(path, body) {
+    return fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Noxy-Token": token }, body: JSON.stringify(body) });
+  }
+  function ensureXterm() {
+    if (xterm) return;
+    xterm = new Terminal({ fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono"), fontSize: 13, cursorBlink: true, theme: termTheme() });
+    fit = new FitAddon.FitAddon();
+    xterm.loadAddon(fit);
+    xterm.open(els.termView);
+    xterm.onData((d) => {
+      if (termExited) {
+        if (d === "\r") { termExited = false; xterm.reset(); openTerm(); }
+        return;
+      }
+      if (!termId) return;
+      const id = termId, data = bytesToB64(new TextEncoder().encode(d));
+      writeChain = writeChain.then(() => termPost("/term/write", { id, data })).catch(() => {});
+    });
+    xterm.attachCustomKeyEventHandler((e) => {
+      if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && e.key === "`") { e.preventDefault(); xterm.blur(); els.input.focus({ preventScroll: true }); return false; }
+      return true;
+    });
+    new ResizeObserver(() => fitTerm()).observe(els.termView);
+  }
+  function fitTerm() {
+    if (!xterm || els.termView.classList.contains("hidden")) return;
+    fit.fit();
+    if (termId && (xterm.cols !== sentCols || xterm.rows !== sentRows)) {
+      sentCols = xterm.cols; sentRows = xterm.rows;
+      send({ kind: "term_resize", cols: xterm.cols, rows: xterm.rows });
+    }
+  }
+  function openTerm() {
+    termOpening = true;
+    fit.fit();
+    sentCols = xterm.cols; sentRows = xterm.rows;
+    send({ kind: "term_open", cols: xterm.cols, rows: xterm.rows });
+  }
+  async function readLoop(id) {
+    while (termId === id) {
+      let res;
+      try { res = await termPost("/term/read", { id }); } catch (err) { await new Promise((r) => setTimeout(r, 500)); continue; }
+      if (res.status === 404) return;   // outro terminal ou fechado
+      if (!res.ok) { await new Promise((r) => setTimeout(r, 500)); continue; }
+      const j = await res.json();
+      if (j.exited) {
+        if (termId !== id) return;
+        termId = 0; termExited = true;
+        xterm.write("\r\n[terminal encerrado — Enter para abrir outro]\r\n");
+        send({ kind: "term_close" });
+        return;
+      }
+      if (j.data) xterm.write(b64ToBytes(j.data));
+    }
+  }
+  let termVisible = false;
+  function renderTerm(f) {
+    if (xterm) xterm.options.theme = termTheme();
+    const visible = f.panel.open && f.panel.tab === "terminal";
+    const shown = visible && !termVisible;
+    termVisible = visible;
+    if (!visible) return;
+    ensureXterm();
+    fitTerm();
+    // escondido, o xterm para de desenhar: ao voltar, redesenha tudo
+    if (shown) requestAnimationFrame(() => { fitTerm(); xterm.refresh(0, xterm.rows - 1); });
+    if (f.term.open && f.term.id !== termId) {
+      termId = f.term.id; termOpening = false; termExited = false;
+      readLoop(termId);
+    } else if (!f.term.open && !termOpening && !termExited && !f.term.error) {
+      openTerm();
+    } else if (!f.term.open && f.term.error && termOpening) {
+      termOpening = false; termExited = true;
+      xterm.write("[" + f.term.error + "]\r\n");
+    }
+    if (wantTermFocus) { wantTermFocus = false; setTimeout(() => xterm.focus(), 0); }
+  }
+
   // renderPanel: aberto ou fechado e a aba ativa vem do quadro; a altura e
   // conveniencia local
   let panelTab = "";
@@ -585,13 +679,15 @@
   els.minimap.addEventListener("pointerup", () => { mmDrag = false; });
   els.runStop.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); send({ kind: "stop" }); });
   for (const tab of els.panelTabs.querySelectorAll(".ptab")) {
-    tab.addEventListener("mousedown", (e) => { e.preventDefault(); if (tab.dataset.tab === "search") wantSearchFocus = true; send({ kind: "panel_tab", key: tab.dataset.tab }); });
+    tab.addEventListener("mousedown", (e) => { e.preventDefault(); if (tab.dataset.tab === "search") wantSearchFocus = true; if (tab.dataset.tab === "terminal") wantTermFocus = true; send({ kind: "panel_tab", key: tab.dataset.tab }); });
   }
   // o divisor e a barra "Saida" inteira redimensionam, com Pointer Events e
   // captura do ponteiro: uma vez iniciado, o arraste segue o divisor mesmo
   // passando pela barra de rolagem do editor ou saindo da janela
   function startResize(e) {
-    if (e.button !== 0 || e.target.closest("#output-close")) return;
+    // abas e botoes da barra sao cliques, nao arraste: o pointerdown com
+    // preventDefault cancelaria o mousedown deles
+    if (e.button !== 0 || e.target.closest("button, .ptab")) return;
     e.preventDefault();
     resizing = { y: e.clientY, h: outputH, id: e.pointerId, el: e.currentTarget };
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* sem captura: o movimento ainda chega enquanto o ponteiro estiver sobre o alvo */ }

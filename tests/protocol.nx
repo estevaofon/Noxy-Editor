@@ -127,6 +127,7 @@ while !s.quitting && waited < 50 do
     waited = waited + 1
 end
 check("quit encerra o loop dono", s.quitting)
+session.shutdown(ref s, events.now())
 server.stop()
 
 print("")
