@@ -137,39 +137,6 @@ func report() -> void
     end
 end
 
-func test_document() -> void
-    print("document")
-    let d: doc.Document = doc.from_text("x.nx", "ab\r\ncd\n")
-    check("from_text normaliza CRLF e mantem a linha final vazia", length(d.lines) == 3 && d.lines[0] == "ab" && d.lines[1] == "cd" && d.lines[2] == "")
-    check("to_text devolve LF", doc.to_text(d) == "ab\ncd\n")
-    let e: doc.Document = doc.from_text("", "")
-    check("documento vazio tem uma linha", length(e.lines) == 1 && e.lines[0] == "")
-
-    let p: doc.Pos = doc.insert(ref d, doc.Pos(0, 1), "X")
-    check("insert na linha", d.lines[0] == "aXb" && p.line == 0 && p.col == 2 && d.dirty)
-    p = doc.insert(ref d, doc.Pos(0, 2), "1\n2\n3")
-    check("insert multilinha divide a linha", d.lines[0] == "aX1" && d.lines[1] == "2" && d.lines[2] == "3b" && length(d.lines) == 5)
-    check("insert multilinha devolve o fim do texto", p.line == 2 && p.col == 1)
-    let u: doc.Document = doc.from_text("", "héllo")
-    doc.insert(ref u, doc.Pos(0, 2), "ç")
-    check("insert conta code points", u.lines[0] == "héçllo")
-
-    doc.delete_range(ref d, doc.Pos(0, 2), doc.Pos(2, 1))
-    check("delete_range atravessando linhas junta as pontas", d.lines[0] == "aXb" && length(d.lines) == 3)
-    doc.delete_range(ref d, doc.Pos(0, 0), doc.Pos(0, 1))
-    check("delete_range na linha", d.lines[0] == "Xb")
-    doc.delete_range(ref d, doc.Pos(1, 0), doc.Pos(1, 0))
-    check("delete_range vazio nao muda nada", d.lines[1] == "cd")
-
-    check("text_range na linha", doc.text_range(d, doc.Pos(1, 0), doc.Pos(1, 1)) == "c")
-    check("text_range multilinha", doc.text_range(d, doc.Pos(0, 1), doc.Pos(2, 0)) == "b\ncd\n")
-
-    let c: doc.Pos = doc.clamp(d, doc.Pos(9, 9))
-    check("clamp traz para dentro", c.line == 2 && c.col == 0)
-    let r: doc.Range = doc.ordered(doc.Pos(2, 0), doc.Pos(0, 1))
-    check("ordered poe a menor primeiro", r.start.line == 0 && r.stop.line == 2)
-end
-
 report()
 ```
 
