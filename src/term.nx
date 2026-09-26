@@ -31,7 +31,7 @@ func new_term() -> Term
 end
 
 // shell e o que o terminal abre: SHELL (ou /bin/sh); no Windows o cmd.exe do
-// COMSPEC, para quando a noxy_pty ganhar ConPTY.
+// COMSPEC, que a noxy_pty abre num pseudoconsole (ConPTY).
 func shell() -> string
     if sys.os() == "windows" then
         let c: sys.EnvResult = sys.getenv("COMSPEC")
