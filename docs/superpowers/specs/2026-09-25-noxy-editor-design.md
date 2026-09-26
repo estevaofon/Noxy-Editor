@@ -168,6 +168,10 @@ arquivo numa aba. `editor.nx`:
 
 Falha ao abrir a porta ou ao ler a raiz: mensagem no stderr e `sys.exit(1)`.
 
+Com a variável de ambiente `NOXY_EDITOR_NO_WINDOW=1` o passo 4 é pulado e o
+editor só imprime a URL no stderr: é assim que o smoke de navegador
+(`tests/web_smoke.py`) e o desenvolvimento do cliente rodam.
+
 ## 6. O modelo em Noxy
 
 ### 6.1 Document (`src/document.nx`)
@@ -436,9 +440,14 @@ a string do quadro ou `""` para 400.
 | `run` | | salva e roda o arquivo ativo |
 | `poll` | | só devolve o quadro |
 | `modal` | key = id do botão | resposta a um modal |
-| `quit` | | página fechando (modo fallback) ou janela fechada |
+| `quit` | | janela fechada (mandado pela routine que espera a extensão) |
+| `bye` | | página descarregando (`pagehide`); o editor sai se nada chegar em 3 s |
+| `quit_if_idle` | | mandado pelo próprio editor 3 s após `bye`: encerra se o último evento tem mais de 2,5 s |
 
 Todo evento carrega `rows` e `tree_version` (a versão que o cliente tem).
+Um reload da página manda `bye` e logo depois `init`, então o
+`quit_if_idle` que chega 3 s depois encontra um evento recente e não encerra;
+fechar a janela do navegador manda só `bye`, e o editor encerra.
 Evento de kind desconhecido devolve o quadro com `message = "evento
 desconhecido: <kind>"`.
 
@@ -561,8 +570,9 @@ perdida" na status e para a fila; a página precisa ser recarregada.
 
 Enquanto `output.running`, um `setInterval` de 250 ms enfileira `poll`.
 
-No modo fallback (navegador), `pagehide` manda `quit` por
-`navigator.sendBeacon`.
+Em `pagehide` a página manda `bye` por `navigator.sendBeacon` para
+`/event?t=<token>` (o beacon não leva cabeçalhos, por isso o servidor aceita o
+token também na query).
 
 ## 9. Atalhos
 
@@ -704,16 +714,23 @@ junto com `ctx.Done()`. Regras:
 ### 11.4 Build e release
 
 Linux: `apt install libgtk-3-dev libwebkit2gtk-4.1-dev`, então
-`go build -o bin/noxy-plugin-webview-linux-amd64 .` no diretório da
-extensão. Em runtime basta o `libwebkit2gtk-4.1` comum, presente em desktops
-GNOME. O workflow de release copia o da engine: um runner por OS (a
+`sh release/build.sh webview` no diretório da extensão e copiar o binário de
+`dist/` para `bin/`. O `webview_go` publicado ainda pede `webkit2gtk-4.0` no
+`pkg-config`, que as distros atuais não têm (PR webview_go#62, aberto, troca só
+essa linha para 4.1); `release/build.sh` contorna criando um diretório
+temporário onde `webkit2gtk-4.0.pc` e `javascriptcoregtk-4.0.pc` apontam para
+os arquivos 4.1 e pondo-o no `PKG_CONFIG_PATH` só durante o build. Em runtime
+basta o `libwebkit2gtk-4.1` comum, presente em desktops GNOME. O workflow de release copia o da engine: um runner por OS (a
 biblioteca é cgo em todos), `release/build.sh webview <arch>`, merge dos
 `checksums-*.txt` em `checksums.txt`, assets no release da tag. Windows e
 macOS só passam pelo workflow; a v1 é testada no Linux.
 
-Testes: `window_test.go` exercita a máquina de estados com uma janela falsa
-(interface com `Run`, `Terminate`, `SetTitle`, `Navigate`): abrir uma vez,
-`wait` destrava no fechamento, erros antes de `open`, `close` idempotente.
+A máquina de estados fica no pacote `window/`, sem importar a biblioteca
+webview, para `go test ./window/` rodar em qualquer máquina, sem headers;
+`main.go` injeta a janela real. `window_test.go` exercita com uma janela falsa
+(`Run`, `Terminate`, `SetTitle`, `Navigate`, `Dispatch`, `Destroy`): abrir uma
+vez, `wait` destrava no fechamento e já vê a janela destruída, erros antes de
+`open`, `close` idempotente, contextos cancelados.
 `examples/smoke.nx` abre uma URL `data:text/html,ok`, dorme 500 ms,
 `close()`, `wait()` volta, imprime `ok`.
 
@@ -725,8 +742,8 @@ na ordem, `google-chrome`, `chromium`, `chromium-browser`, `brave-browser`,
 `microsoft-edge`, cada um com `--app=<url>` em segundo plano
 (`sys.exec("<bin> --app='<url>' >/dev/null 2>&1 &")`, testando a existência
 com `command -v`). Sem nenhum, `xdg-open` (Linux) ou `open` (macOS). Nesse
-modo o loop dono encerra no `quit` mandado pela página em `pagehide`, ou em
-Ctrl+C.
+modo o loop dono encerra 3 s depois do `bye` que a página manda em
+`pagehide`, se nenhum evento novo chegar, ou em Ctrl+C.
 
 ## 12. Erros
 
@@ -779,12 +796,19 @@ routine, faz POSTs reais com `http_client.post` (`init`, `text`, `key`),
 confere status 200, o token errado dando 403, e o quadro com as linhas
 esperadas. Encerra com `quit`.
 
+**`tests/web_smoke.py`**: sobe o editor com `NOXY_EDITOR_NO_WINDOW=1`, abre a
+página num Chrome headless pelo DevTools Protocol (cliente mínimo em
+`tests/cdp.py`, só biblioteca padrão do Python) e exercita o JS de verdade:
+árvore, abrir arquivo, digitar com acento, Enter, Ctrl+Z, clique, Shift+End,
+colar, arrastar, duplo clique, roda, F5 com saída, modal ao fechar aba suja,
+e tira um screenshot. Precisa de `google-chrome` no PATH.
+
 **Extensão**: `go test ./...` e `noxy examples/smoke.nx`.
 
-**`tests/MANUAL.md`**: lista do que só o navegador prova, conferida à mão a
-cada release: acentos por dead key, IME, clipboard nos dois sentidos, clique,
-arraste e duplo clique, roda, redimensionar a janela, modal, rodar com saída
-longa, fallback sem extensão.
+**`tests/MANUAL.md`**: o que nem o smoke headless prova, conferido à mão a
+cada release: acentos por dead key e IME no teclado real, clipboard do sistema
+nos dois sentidos, redimensionar a janela, a janela pela extensão (título,
+fechar pelo X encerra o processo), fallback sem extensão.
 
 ## 14. Documentação e registro de achados
 
@@ -797,7 +821,12 @@ longa, fallback sem extensão.
   iniciais:
   1. Não há como interromper ou matar um processo iniciado por
      `sys.exec_output`.
-  2. `time_now()` não tem tipo de retorno estático e exige anotação.
+  2. `time_now()` não tem tipo de retorno estático e exige anotação em `let`.
+  3. A stdlib não tem ordenação (`sort`); a árvore usa inserção em Noxy.
+  4. `use strings select *` sombreia o builtin `contains` de arrays com o
+     `contains` de strings: módulos que usam os dois importam por nome.
+  5. `serve` da stdlib imprime `Server listening on ...` no stdout do
+     programa, sem opção de silenciar.
 - Spec e plano em `docs/superpowers/` do editor, cobrindo os dois
   repositórios.
 - Commits `tipo(escopo): descrição` em português.
