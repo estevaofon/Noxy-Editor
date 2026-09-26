@@ -107,14 +107,15 @@ dele (fora das abas) ou o divisor acima para redimensionar.
 
 **Alterações não salvas não se perdem.** Cada aba suja tem uma cópia em
 `~/.cache/noxy-editor/recovery/` (`%LOCALAPPDATA%\noxy-editor\recovery\` no
-Windows), gravada no máximo uma vez por segundo e
-1,5 s depois da última tecla. Fechar pelo X, uma queda do editor ou da
-máquina: na próxima vez que a pasta for aberta, as abas voltam sujas, com o
-texto. Salvar ou fechar sem salvar apaga a cópia.
+Windows, `~/Library/Caches/noxy-editor/recovery/` no macOS), gravada no
+máximo uma vez por segundo e 1,5 s depois da última tecla. Fechar pelo X,
+uma queda do editor ou da máquina: na próxima vez que a pasta for aberta,
+as abas voltam sujas, com o texto. Salvar ou fechar sem salvar apaga a cópia.
 
 **Temas**: Escuro, Claro, Dracula, Nord e Monokai, pela paleta ("Tema: ...").
 A escolha fica em `~/.config/noxy-editor/settings.json`
-(`%APPDATA%\noxy-editor\settings.json` no Windows).
+(`%APPDATA%\noxy-editor\settings.json` no Windows,
+`~/Library/Application Support/noxy-editor/settings.json` no macOS).
 
 **Git**: se a pasta está num repositório, a branch aparece na barra de
 status e os arquivos modificados (âmbar), novos (verde) e apagados (riscados)
@@ -175,10 +176,9 @@ Busca sem regex; um terminal por vez; git só para ver (commit, pull e push
 pelo terminal); o programa executado recebe `/dev/null` (`nul` no Windows)
 como entrada (para programas interativos, use o terminal).
 
-No Windows: o F5 demora cerca de um segundo a mais para começar, porque o
-PowerShell lança o programa numa janela oculta; Parar mata a árvore de
-processos na hora (`taskkill /T /F`), sem os 2 s de TERM do Linux; a raiz ou
-o arquivo com `%` ou `!` no nome quebram o F5 e o git (o `cmd` expande esses
-caracteres); e o terminal é o `cmd.exe` (mude o `COMSPEC` para outro shell).
-O Linux e o macOS usam `sh`; o Windows usa `cmd` e PowerShell, sem depender
-de Git Bash ou WSL.
+No Windows: Parar termina a árvore de processos na hora (o job do
+programa), sem os 2 s de TERM do Linux; um `%` no nome da raiz ou do
+arquivo pode quebrar o F5 e o git (o `cmd` expande `%VAR%` mesmo entre
+aspas); e o terminal é o `cmd.exe` (mude o `COMSPEC` para outro shell). O
+Linux e o macOS usam `sh`; o Windows usa `cmd`, sem depender de Git Bash ou
+WSL.

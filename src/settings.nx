@@ -1,7 +1,8 @@
 // src/settings.nx — as configuracoes do editor em
-// <config>/noxy-editor/settings.json, onde <config> e ~/.config
-// (XDG_CONFIG_HOME quando definido) ou, no Windows, APPDATA
-// (platform.config_home); NOXY_EDITOR_CONFIG_DIR sobrepoe, para os testes.
+// <config>/noxy-editor/settings.json, onde <config> e a raiz de
+// configuracao do usuario (platform.config_home: ~/.config ou
+// XDG_CONFIG_HOME, APPDATA no Windows, ~/Library/Application Support no
+// macOS); NOXY_EDITOR_CONFIG_DIR sobrepoe, para os testes.
 // Arquivo ausente ou invalido da o padrao; a proxima mudanca regrava.
 use sys
 use io

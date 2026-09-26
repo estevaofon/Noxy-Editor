@@ -1,14 +1,8 @@
 // src/platform.nx — o que muda entre Linux/macOS e Windows: separador de
-// caminho, diretorios do usuario (XDG, LOCALAPPDATA, APPDATA), temporarios
-// e como passar um argumento ao shell do sys.exec. O editor usa "/" por
-// dentro em todas as plataformas (o Go aceita "/" no Windows); o que vem de
-// fora (argv, getcwd, variaveis de ambiente) passa por slashes.
-//
-// No Windows o sys.exec roda `cmd /C <comando>` e o Go escapa cada aspa do
-// comando como \", que o cmd repassa ao programa: qualquer argumento entre
-// aspas chega quebrado (docs/ACHADOS.md, achado 10). arg contorna: o valor
-// vai, ja entre aspas, numa variavel de ambiente que o cmd herda, e o
-// comando recebe %NOME%, que o cmd expande antes de tratar as aspas.
+// caminho, diretorios do usuario e temporarios (normalizados a partir dos
+// de sys), e como passar um argumento ao shell do sys.exec. O editor usa
+// "/" por dentro em todas as plataformas (o Go aceita "/" no Windows); o
+// que vem de fora (argv, getcwd, variaveis de ambiente) passa por slashes.
 use sys
 use io
 use uuid
@@ -66,73 +60,22 @@ func absolute(path: string) -> string
     return strip_slash(cwd() + "/" + p)
 end
 
-// env e o valor da variavel, "" quando nao existe.
-func env(name: string) -> string
-    let e: sys.EnvResult = sys.getenv(name)
-    if e.ok then
-        return e.value
-    end
-    return ""
-end
-
-func home() -> string
-    if windows() then
-        let u: string = env("USERPROFILE")
-        if u != "" then
-            return slashes(u)
-        end
-    end
-    return slashes(env("HOME"))
-end
-
-// cache_home: XDG_CACHE_HOME; no Windows LOCALAPPDATA; senao ~/.cache.
+// cache_home e config_home sao as raizes de cache e de configuracao do
+// usuario como o Go as resolve (sys.cache_dir, sys.config_dir): no Linux
+// XDG_CACHE_HOME e XDG_CONFIG_HOME, ou ~/.cache e ~/.config; no Windows
+// LOCALAPPDATA e APPDATA; no macOS ~/Library/Caches e ~/Library/Application
+// Support. "" quando a variavel base da plataforma nao existe.
 func cache_home() -> string
-    let x: string = env("XDG_CACHE_HOME")
-    if x != "" then
-        return slashes(x)
-    end
-    if windows() then
-        let l: string = env("LOCALAPPDATA")
-        if l != "" then
-            return slashes(l)
-        end
-        return home() + "/AppData/Local"
-    end
-    return home() + "/.cache"
+    return slashes(sys.cache_dir().value)
 end
 
-// config_home: XDG_CONFIG_HOME; no Windows APPDATA; senao ~/.config.
 func config_home() -> string
-    let x: string = env("XDG_CONFIG_HOME")
-    if x != "" then
-        return slashes(x)
-    end
-    if windows() then
-        let a: string = env("APPDATA")
-        if a != "" then
-            return slashes(a)
-        end
-        return home() + "/AppData/Roaming"
-    end
-    return home() + "/.config"
+    return slashes(sys.config_dir().value)
 end
 
-// temp_dir: TEMP ou TMP no Windows (senao LOCALAPPDATA/Temp); TMPDIR ou /tmp.
+// temp_dir: TEMP ou TMP no Windows, TMPDIR ou /tmp nos demais (sys.temp_dir).
 func temp_dir() -> string
-    if windows() then
-        for name in ["TEMP", "TMP"] do
-            let t: string = env(name)
-            if t != "" then
-                return strip_slash(slashes(t))
-            end
-        end
-        return cache_home() + "/Temp"
-    end
-    let tmpdir: string = env("TMPDIR")
-    if tmpdir != "" then
-        return strip_slash(tmpdir)
-    end
-    return "/tmp"
+    return slashes(sys.temp_dir())
 end
 
 // make_temp_dir cria um diretorio temporario novo; "" se nao conseguiu. No
@@ -178,15 +121,13 @@ func shell_quote(s: string) -> string
     return "'" + replace(s, "'", "'\\''") + "'"
 end
 
-// arg devolve o que vai no comando do sys.exec para o shell entregar value
-// inteiro ao programa. No sh e shell_quote(value); no cmd o valor vai entre
-// aspas na variavel de ambiente name e o comando recebe %name%. Cada uso
-// tem um nome proprio (NOXY_EDITOR_...), porque tasks concorrentes
-// compartilham o ambiente do processo.
-func arg(name: string, value: string) -> string
+// arg cita value para o shell do sys.exec entregar o valor inteiro ao
+// programa: aspas simples no sh (shell_quote), aspas duplas no cmd, que o
+// sys.exec roda como `cmd /S /C "<comando>"` e entrega as aspas intactas.
+// Dentro das aspas o cmd ainda expande %NOME% de uma variavel definida.
+func arg(value: string) -> string
     if windows() then
-        sys.setenv(name, "\"" + value + "\"")
-        return "%" + name + "%"
+        return "\"" + value + "\""
     end
     return shell_quote(value)
 end

@@ -76,18 +76,15 @@ end
 
 // open_app_windows: `start "" programa args` abre chrome, msedge ou brave
 // pelo registro (App Paths), e devolve 1 quando o programa nao existe; por
-// fim o navegador padrao. A linha vai por variavel de ambiente porque o
-// comando do sys.exec nao pode ter aspas (platform.arg explica), e o `""`
-// e o titulo vazio que o start exige antes do programa.
+// fim o navegador padrao. O `""` e o titulo vazio que o start exige antes
+// do programa.
 func open_app_windows(target: string) -> string
     for b in WINDOWS_BROWSERS do
-        sys.setenv("NOXY_EDITOR_OPEN", "\"\" " + b + " \"--app=" + target + "\"")
-        if sys.exec("start %NOXY_EDITOR_OPEN% >nul 2>nul").exit_code == 0 then
+        if sys.exec("start \"\" " + b + " \"--app=" + target + "\" >nul 2>nul").exit_code == 0 then
             return "app"
         end
     end
-    sys.setenv("NOXY_EDITOR_OPEN", "\"\" \"" + target + "\"")
-    if sys.exec("start %NOXY_EDITOR_OPEN% >nul 2>nul").exit_code == 0 then
+    if sys.exec("start \"\" \"" + target + "\" >nul 2>nul").exit_code == 0 then
         return "browser"
     end
     return ""

@@ -359,8 +359,15 @@ func run_until(r: ref runner.RunState) -> void
     end
 end
 
+// alive: o grupo de processos do programa (Unix) ou o processo (Windows)
+// ainda existe. Sem tarefa, o tasklist avisa na codepage do console (cp850
+// num Windows em portugues), que nao e UTF-8: por isso a saida em bytes.
 func alive(pid: int) -> bool
-    return runner.group_alive(pid)
+    if platform.windows() then
+        let t: sys.SysBytesResult = sys.exec_output_bytes("tasklist /NH /FO CSV /FI \"PID eq " + to_str(pid) + "\"")
+        return t.ok && strings.is_valid_utf8(t.output) && strings.contains(to_str(t.output), "\"" + to_str(pid) + "\"")
+    end
+    return sys.exec("kill -0 -" + to_str(pid) + " 2>/dev/null").exit_code == 0
 end
 
 func test_runner() -> void
@@ -372,11 +379,10 @@ func test_runner() -> void
     write_file(root + "/aos_poucos.nx", "use sys\nprint(\"um ação\")\nsys.sleep(700)\nprint(\"dois\")\n")
     write_file(root + "/sem_fim.nx", "use sys\nprint(\"rodando\")\nwhile true do\n    sys.sleep(50)\nend\n")
     let r: runner.RunState = runner.new_run()
-    check("start", runner.start(ref r, root, "hello.nx") == "" && r.running && r.pid > 0)
+    check("start", runner.start(ref r, root, "hello.nx") == "" && r.running && r.proc.pid > 0)
     check("start durante execucao recusa", runner.start(ref r, root, "hello.nx") == "ja esta rodando")
     run_until(ref r)
     check("saida e codigo de saida", !r.running && r.text == "$ noxy hello.nx\noi\n[saiu com 3]")
-    check("diretorio temporario apagado no fim", !io.exists(r.dir))
 
     // raiz com espaco e acento: o lancador precisa citar os caminhos
     let acc: string = platform.cwd() + "/tests/tmp/runner com espaço"
@@ -410,13 +416,25 @@ func test_runner() -> void
     runner.start(ref loop, root, "sem_fim.nx")
     sys.sleep(400)
     runner.poll(ref loop, events.now())
-    let pid: int = loop.pid
+    let pid: int = loop.proc.pid
     check("programa sem fim roda", loop.running && alive(pid))
     check("parar", runner.stop(ref loop, events.now()) == "")
     run_until(ref loop)
     check("parar encerra, com [interrompido] no painel", !loop.running && strings.ends_with(loop.text, "[interrompido]"))
     check("sem processo orfao", !alive(pid))
     check("parar sem execucao avisa", runner.stop(ref loop, events.now()) == "nada rodando")
+
+    // um neto que segura a saida aberta nao prende o painel, e morre quando
+    // o programa sai (no Windows o job garante o mesmo; alive so ve o lider)
+    if !platform.windows() then
+        write_file(root + "/com_neto.nx", "use sys\nsys.exec(\"sleep 30 &\")\nprint(\"pai\")\n")
+        let gc: runner.RunState = runner.new_run()
+        runner.start(ref gc, root, "com_neto.nx")
+        let gpid: int = gc.proc.pid
+        run_until(ref gc)
+        sys.sleep(100)
+        check("o que o programa deixou rodando morre com ele", !gc.running && strings.ends_with(gc.text, "pai\n[saiu com 0]") && !alive(gpid))
+    end
 
     let bad: runner.RunState = runner.new_run()
     runner.start(ref bad, root, "nao.nx")
@@ -427,7 +445,6 @@ func test_runner() -> void
     else
         check("caminho com aspas simples", runner.command("/x y", "a'b.nx") == "cd '/x y' && NOXY_INTERPRETER=1 exec " + platform.shell_quote(runner.noxy_exe()) + " 'a'\\''b.nx'")
     end
-    check("parse_pid aceita so um numero", runner.parse_pid(" 4242\n") == 4242 && runner.parse_pid("") == 0 && runner.parse_pid("erro: x") == 0)
 end
 
 func test_session() -> void
@@ -748,21 +765,24 @@ func test_platform() -> void
     let saved_sc: sys.EnvResult = sys.getenv("NOXY_EDITOR_CONFIG_DIR")
     sys.setenv("XDG_CACHE_HOME", "")
     sys.setenv("XDG_CONFIG_HOME", "")
+    let home: string = platform.slashes(sys.home_dir().value)
     if platform.windows() then
         check("cache_home no Windows e LOCALAPPDATA", platform.cache_home() == platform.slashes(sys.getenv("LOCALAPPDATA").value))
         check("config_home no Windows e APPDATA", platform.config_home() == platform.slashes(sys.getenv("APPDATA").value))
-        check("temp_dir no Windows e TEMP", platform.temp_dir() == platform.slashes(sys.getenv("TEMP").value))
+    elif sys.os() == "darwin" then
+        check("cache_home e config_home no macOS ficam em ~/Library", platform.cache_home() == home + "/Library/Caches" && platform.config_home() == home + "/Library/Application Support")
     else
-        check("cache_home sem XDG e ~/.cache", platform.cache_home() == sys.getenv("HOME").value + "/.cache")
-        check("config_home sem XDG e ~/.config", platform.config_home() == sys.getenv("HOME").value + "/.config")
-        check("temp_dir existe", platform.temp_dir() != "" && io.stat(platform.temp_dir()).is_dir)
+        check("cache_home sem XDG e ~/.cache", platform.cache_home() == home + "/.cache")
+        check("config_home sem XDG e ~/.config", platform.config_home() == home + "/.config")
+        sys.setenv("XDG_CACHE_HOME", "/xdg/cache")
+        sys.setenv("XDG_CONFIG_HOME", "/xdg/config")
+        check("XDG_CACHE_HOME e XDG_CONFIG_HOME valem no Linux", platform.cache_home() == "/xdg/cache" && platform.config_home() == "/xdg/config")
     end
-    sys.setenv("XDG_CACHE_HOME", "/xdg/cache")
-    sys.setenv("XDG_CONFIG_HOME", "/xdg/config")
-    check("XDG_CACHE_HOME e XDG_CONFIG_HOME valem em qualquer plataforma", platform.cache_home() == "/xdg/cache" && platform.config_home() == "/xdg/config")
+    let tmpd: string = platform.temp_dir()
+    check("temp_dir existe, sem barras invertidas", tmpd != "" && !strings.contains(tmpd, "\\") && io.stat(tmpd).is_dir)
     sys.setenv("NOXY_EDITOR_CACHE_DIR", "")
     sys.setenv("NOXY_EDITOR_CONFIG_DIR", "")
-    check("recovery e settings ficam em <cache>/noxy-editor e <config>/noxy-editor", recovery.cache_dir() == "/xdg/cache/noxy-editor" && settings.config_dir() == "/xdg/config/noxy-editor")
+    check("recovery e settings ficam em <cache>/noxy-editor e <config>/noxy-editor", recovery.cache_dir() == platform.cache_home() + "/noxy-editor" && settings.config_dir() == platform.config_home() + "/noxy-editor")
     sys.setenv("NOXY_EDITOR_CACHE_DIR", saved_rc.value)
     sys.setenv("NOXY_EDITOR_CONFIG_DIR", saved_sc.value)
     sys.setenv("XDG_CACHE_HOME", saved_c.value)
@@ -782,10 +802,10 @@ func test_platform() -> void
         q = " 2>nul"
     end
     check("quiet descarta o stderr na sintaxe do shell da plataforma", platform.quiet() == q)
-    let a: string = platform.arg("NOXY_EDITOR_TEST_ARG", "a b")
+    let a: string = platform.arg("a b")
     if platform.windows() then
-        check("arg no Windows: valor entre aspas numa variavel de ambiente, %NOME% no comando", a == "%NOXY_EDITOR_TEST_ARG%" && sys.getenv("NOXY_EDITOR_TEST_ARG").value == "\"a b\"")
-        check("o cmd expande a variavel com as aspas intactas", strings.trim(sys.exec_output("echo " + a).output) == "\"a b\"")
+        check("arg no Windows: aspas duplas", a == "\"a b\"")
+        check("o cmd entrega as aspas intactas ao programa", strings.trim(sys.exec_output("echo " + a).output) == "\"a b\"")
     else
         check("arg no Unix: aspas simples", a == "'a b'")
         check("o sh recebe o valor inteiro", strings.trim(sys.exec_output("echo " + a).output) == "a b")
@@ -1024,7 +1044,7 @@ func git_repo() -> string
         cd = "cd /D "
     end
     // symbolic-ref em vez de init -b: funciona em git anterior ao 2.28
-    sys.exec(cd + platform.arg("NOXY_EDITOR_TEST_REPO", repo) + " && git init -q && git symbolic-ref HEAD refs/heads/principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
+    sys.exec(cd + platform.arg(repo) + " && git init -q && git symbolic-ref HEAD refs/heads/principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
     write_file(repo + "/proj/a.nx", "let a = 2\n")
     write_file(repo + "/proj/sub/novo.nx", "n\n")
     write_file(repo + "/proj/café.nx", "c\n")
@@ -1040,7 +1060,7 @@ func test_gitinfo() -> void
     check("pastas com alteracao dentro", has_key(p.dirs, "/r/sub") && !has_key(p.dirs, "/r"))
     let q: gitinfo.Parsed = gitinfo.parse(" M proj/x.nx\n?? outro/y.nx\n?? proj/s/z.nx\n", "proj/", "/r/proj")
     check("prefixo: so o que esta sob a raiz aberta, relativo a ela", length(keys(q.status)) == 2 && q.status["/r/proj/x.nx"] == "M" && has_key(q.dirs, "/r/proj/s"))
-    let crlf: gitinfo.Parsed = gitinfo.parse("#\r\n M a.nx\r\n?? b.nx\r\n", "", "/r")
+    let crlf: gitinfo.Parsed = gitinfo.parse(" M a.nx\r\n?? b.nx\r\n", "", "/r")
     check("porcelain com \\r\\n (o cmd do Windows) nao deixa \\r no caminho", length(keys(crlf.status)) == 2 && crlf.status["/r/a.nx"] == "M" && crlf.status["/r/b.nx"] == "?")
 
     let repo: string = git_repo()
@@ -1183,7 +1203,7 @@ func test_term() -> void
     runner.start(ref z.run, root, "sem_fim.nx")
     term.open(ref z.term, root, 80, 24)
     sys.sleep(300)
-    let zpid: int = z.run.pid
+    let zpid: int = z.run.proc.pid
     session.shutdown(ref z, events.now())
     sys.sleep(300)
     check("shutdown para o programa em execucao", !alive(zpid))

@@ -1,9 +1,9 @@
 // src/recovery.nx — copias de recuperacao das abas com alteracoes nao
 // salvas, em <cache>/noxy-editor/recovery/<sha256 do caminho>.json, onde
-// <cache> e ~/.cache (XDG_CACHE_HOME quando definido) ou, no Windows,
-// LOCALAPPDATA (platform.cache_home); NOXY_EDITOR_CACHE_DIR sobrepoe, para
-// os testes. Cobrem fechar pelo X e queda do editor: a partida seguinte
-// reabre as abas (session.restore).
+// <cache> e a raiz de cache do usuario (platform.cache_home: ~/.cache ou
+// XDG_CACHE_HOME, LOCALAPPDATA no Windows, ~/Library/Caches no macOS);
+// NOXY_EDITOR_CACHE_DIR sobrepoe, para os testes. Cobrem fechar pelo X e
+// queda do editor: a partida seguinte reabre as abas (session.restore).
 use sys
 use io
 use crypto

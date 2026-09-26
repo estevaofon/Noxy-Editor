@@ -1,14 +1,12 @@
-// src/runner.nx — roda um arquivo .nx em segundo plano, com a saida num
-// arquivo temporario lido aos pedacos a cada poll: a saida aparece ao vivo e
-// Parar mata o programa e o que ele abriu. O Noxy nao mata processos nem le
-// saida de processo sem bloquear (docs/ACHADOS.md); o shell e os arquivos
-// resolvem. No Linux e macOS o programa roda num grupo de processos proprio
-// (setsid) e Parar e kill no grupo; no Windows o PowerShell o inicia num cmd
-// oculto e devolve o PID, e Parar e taskkill /T na arvore. O programa roda
-// com a raiz como cwd e a entrada em /dev/null (nul no Windows).
+// src/runner.nx — roda um arquivo .nx em segundo plano pelo modulo process
+// da stdlib: a saida chega aos pedacos a cada poll, sem bloquear, e Parar
+// alcanca o programa e o que ele abriu (grupo de processos no Linux e
+// macOS, job no Windows). O programa roda com a raiz como cwd e a entrada
+// no dispositivo nulo. Quando ele sai, o que deixou rodando morre junto
+// (process.close); quando o editor sai, o Noxy mata o que ainda roda.
 use sys
-use io
-use strings select ends_with, trim, is_valid_utf8, contains, codes
+use process
+use strings select ends_with, is_valid_utf8
 use src.platform as platform
 
 let KILL_AFTER_MS = 2000
@@ -17,17 +15,14 @@ struct RunState
     running: bool
     text: string       // o conteudo do painel de saida
     version: int       // muda a cada alteracao de text ou running
-    cmd: string        // o comando do programa (sem o lancador)
-    dir: string        // diretorio temporario com out e code
-    pid: int           // lider do grupo de processos (Unix) ou o cmd da arvore (Windows)
-    out: io.File       // aberto para leitura incremental de dir/out
-    pending: bytes     // bytes do fim de uma leitura que ainda nao formam UTF-8
+    cmd: string        // o comando do programa
+    proc: process.Process
     stopping: bool
     stop_at: int
 end
 
 func new_run() -> RunState
-    return RunState(false, "", 0, "", "", 0, io.File(-1, "", "", false), b"", false, 0)
+    return RunState(false, "", 0, "", process.Process(-1, -1, false, ""), false, 0)
 end
 
 // noxy_exe: o interpretador que roda este editor — o noxy, ou o proprio
@@ -43,11 +38,10 @@ end
 
 // command e o que roda: cd na raiz e o interpretador no arquivo, na sintaxe
 // do shell da plataforma, com NOXY_INTERPRETER=1 SO no ambiente do filho
-// (`VAR=1 exec` no sh; `set` dentro do cmd oculto no Windows) — num
-// noxy-editor autocontido a variavel faz o binario rodar como noxy comum, e
-// ela e herdada, entao nunca vai no ambiente do editor. No Windows as aspas
-// sao seguras aqui porque a linha inteira vai por variavel de ambiente
-// (launch_windows), nao pelo comando do sys.exec.
+// (`VAR=1 exec` no sh; `set` dentro do cmd no Windows) — num noxy-editor
+// autocontido a variavel faz o binario rodar como noxy comum, e ela e
+// herdada, entao nunca vai no ambiente do editor. No Windows o process roda
+// `cmd /S /C "<linha>"`, que entrega as aspas da linha intactas.
 func command(root: string, rel: string) -> string
     if platform.windows() then
         return "cd /D \"" + platform.backslashes(root) + "\" && set NOXY_INTERPRETER=1&& \"" + platform.backslashes(noxy_exe()) + "\" \"" + platform.backslashes(rel) + "\""
@@ -55,67 +49,17 @@ func command(root: string, rel: string) -> string
     return "cd " + platform.shell_quote(root) + " && NOXY_INTERPRETER=1 exec " + platform.shell_quote(noxy_exe()) + " " + platform.shell_quote(rel)
 end
 
-// parse_pid le o PID que o lancador imprimiu; 0 se nao veio um numero.
-func parse_pid(s: string) -> int
-    let t: string = trim(s)
-    if t == "" then
-        return 0
-    end
-    for c in codes(t) do
-        if c < 48 || c > 57 then
-            return 0
-        end
-    end
-    return to_int(t)
-end
-
-// launch_unix: `setsid sh -c '...' & echo $!` da o PID do lider de um grupo
-// de processos proprio; a saida e o codigo vao para dir/out e dir/code.
-func launch_unix(cmd: string, dir: string) -> string
-    let inner: string = "(" + cmd + ") >> " + platform.shell_quote(dir + "/out") + " 2>&1 < /dev/null; echo $? > " + platform.shell_quote(dir + "/code")
-    let l: sys.SysResult = sys.exec_output("setsid sh -c " + platform.shell_quote(inner) + " > /dev/null 2>&1 & echo $!")
-    return l.output
-end
-
-// launch_windows: o PowerShell inicia um cmd oculto (Start-Process -PassThru
-// imprime o PID) com a linha inteira numa variavel de ambiente, porque o
-// comando do sys.exec nao pode ter aspas (platform.arg explica). /V:ON faz
-// !errorlevel! ser lido depois do noxy terminar, nao ao montar a linha.
-func launch_windows(cmd: string, dir: string) -> string
-    let wdir: string = platform.backslashes(dir)
-    sys.setenv("NOXY_EDITOR_RUN_ARGS", "/V:ON /C " + cmd + " >> \"" + wdir + "\\out\" 2>&1 < nul & echo !errorlevel! > \"" + wdir + "\\code\"")
-    let l: sys.SysResult = sys.exec_output("powershell -NoProfile -NonInteractive -Command (Start-Process -FilePath $env:ComSpec -ArgumentList $env:NOXY_EDITOR_RUN_ARGS -WindowStyle Hidden -PassThru).Id")
-    return l.output
-end
-
 // start dispara a execucao; devolve "" ou a mensagem de recusa.
 func start(r: ref RunState, root: string, rel: string) -> string
     if r.running then
         return "ja esta rodando"
     end
-    let dir: string = platform.make_temp_dir()
-    if dir == "" then
-        return "nao consegui criar o diretorio temporario da execucao"
-    end
-    let out: string = dir + "/out"
-    let touch: io.File = io.open(out, "w")
-    io.close(touch)
     r.cmd = command(root, rel)
-    let printed: string = ""
-    if platform.windows() then
-        printed = launch_windows(r.cmd, dir)
-    else
-        printed = launch_unix(r.cmd, dir)
+    let p: process.Process = process.start(r.cmd)
+    if !p.ok then
+        return "nao consegui iniciar o programa: " + p.error
     end
-    let pid: int = parse_pid(printed)
-    if pid == 0 then
-        platform.rmtree(dir)
-        return "nao consegui iniciar o programa: o lancador nao devolveu o PID"
-    end
-    r.dir = dir
-    r.pid = pid
-    r.out = io.open(out, "r")
-    r.pending = b""
+    r.proc = p
     r.stopping = false
     r.text = "$ noxy " + rel + "\n"
     r.running = true
@@ -123,53 +67,20 @@ func start(r: ref RunState, root: string, rel: string) -> string
     return ""
 end
 
-// read_new anexa o que o arquivo de saida ganhou; guarda em pending ate 3
-// bytes finais que ainda nao fecham um caractere UTF-8.
+// read_new anexa o que o programa escreveu desde a ultima leitura. O
+// process nunca parte um caractere UTF-8 entre leituras, entao um pedaco
+// invalido e saida que nao e texto.
 func read_new(r: ref RunState) -> void
-    let got: io.IOBytesResult = io.read_bytes(r.out)
-    if !got.ok || length(got.data) == 0 then
+    let got: bytes = process.read(r.proc)
+    if length(got) == 0 then
         return
     end
-    let buf: bytes = r.pending + got.data
-    let n: int = length(buf)
-    for k in range(4) do
-        if k <= n && is_valid_utf8(slice(buf, 0, n - k)) then
-            r.text = r.text + to_str(slice(buf, 0, n - k))
-            r.pending = slice(buf, n - k, n)
-            r.version = r.version + 1
-            return
-        end
+    if is_valid_utf8(got) then
+        r.text = r.text + to_str(got)
+    else
+        r.text = r.text + "[saida que nao e UTF-8 omitida]\n"
     end
-    r.text = r.text + "[saida que nao e UTF-8 omitida]\n"
-    r.pending = b""
     r.version = r.version + 1
-end
-
-// group_alive: o programa (ou algo do grupo ou da arvore dele) ainda existe.
-func group_alive(pid: int) -> bool
-    if platform.windows() then
-        // tasklist filtra por PID e em CSV traz o PID entre aspas. Sem
-        // tarefa ele avisa em texto na codificacao do console, que o
-        // exec_output pode recusar como UTF-8: ok=false tambem e "morto".
-        let f: string = platform.arg("NOXY_EDITOR_RUN_FILTER", "PID eq " + to_str(pid))
-        let t: sys.SysResult = sys.exec_output("tasklist /NH /FO CSV /FI " + f)
-        return t.ok && contains(t.output, "\"" + to_str(pid) + "\"")
-    end
-    return sys.exec("kill -0 -" + to_str(pid) + " 2>/dev/null").exit_code == 0
-end
-
-// kill_group manda TERM (ou KILL) ao grupo; no Windows nao ha TERM, e o
-// taskkill /T /F derruba a arvore inteira de uma vez.
-func kill_group(pid: int, force: bool) -> void
-    if platform.windows() then
-        sys.exec("taskkill /T /F /PID " + to_str(pid) + " >nul 2>nul")
-        return
-    end
-    let sig: string = "-TERM"
-    if force then
-        sig = "-KILL"
-    end
-    sys.exec("kill " + sig + " -" + to_str(pid) + " 2>/dev/null")
 end
 
 func finish(r: ref RunState, tail: string) -> void
@@ -178,13 +89,7 @@ func finish(r: ref RunState, tail: string) -> void
         r.text = r.text + "\n"
     end
     r.text = r.text + tail
-    io.close(r.out)
-    // no Windows o cmd pode ainda estar fechando dir/code: uma segunda
-    // tentativa logo depois basta
-    if !platform.rmtree(r.dir) then
-        sys.sleep(50)
-        platform.rmtree(r.dir)
-    end
+    process.close(r.proc)
     r.running = false
     r.stopping = false
     r.version = r.version + 1
@@ -196,33 +101,27 @@ func poll(r: ref RunState, now: int) -> void
         return
     end
     read_new(r)
-    let code_path: string = r.dir + "/code"
+    let st: process.ProcessStatus = process.poll(r.proc)
     if r.stopping then
-        if !group_alive(r.pid) then
+        if !st.running then
             finish(r, "[interrompido]")
         elif now - r.stop_at >= KILL_AFTER_MS then
-            kill_group(r.pid, true)
+            process.kill(r.proc)
         end
         return
     end
-    if io.exists(code_path) then
-        let f: io.File = io.open(code_path, "r")
-        let c: io.IOResult = io.read(f)
-        io.close(f)
-        let code: string = trim(c.data)
-        if code == "" then
-            return     // o shell ainda esta escrevendo o codigo
-        end
-        finish(r, "[saiu com " + code + "]")
+    if !st.running then
+        finish(r, "[saiu com " + to_str(st.exit_code) + "]")
     end
 end
 
-// stop manda TERM ao grupo; poll mata com KILL se nao sair em KILL_AFTER_MS.
+// stop pede a parada da arvore (TERM no Unix; no Windows o job termina na
+// hora); poll mata com KILL se nao sair em KILL_AFTER_MS.
 func stop(r: ref RunState, now: int) -> string
     if !r.running then
         return "nada rodando"
     end
-    kill_group(r.pid, false)
+    process.terminate(r.proc)
     r.stopping = true
     r.stop_at = now
     r.version = r.version + 1

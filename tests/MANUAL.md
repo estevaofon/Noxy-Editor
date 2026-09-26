@@ -15,7 +15,7 @@ provam. Conferir a cada release, com a extensão instalada:
 - [ ] `NOXY_WEBVIEW_DEBUG=1 noxy editor.nx .` abre com o inspetor do WebKit disponível.
 - [ ] Terminal (Ctrl+`): `vim` abre, Escape troca de modo, `:q` sai; `top` desenha e atualiza; Ctrl+C interrompe um `sleep 100`.
 - [ ] Redimensionar o painel com `top` aberto: o `top` redesenha no tamanho novo.
-- [ ] Fechar a janela pelo X com `sleep 1000` no terminal e um programa rodando pelo F5: `pgrep -f "sleep 1000"` e `pgrep -f "exec noxy"` vazios.
+- [ ] Fechar a janela pelo X com `sleep 1000` no terminal e um programa rodando pelo F5: `pgrep -f "sleep 1000"` vazio e `pgrep -af noxy` sem o arquivo do F5.
 - [ ] Editar sem salvar, fechar pelo X, abrir a mesma pasta: a aba volta suja, com o texto.
 - [ ] Trocar o tema pela paleta, fechar e abrir: o tema continua.
 - [ ] Num repositório, salvar um arquivo: ele fica âmbar na árvore e na aba; a branch aparece na status.

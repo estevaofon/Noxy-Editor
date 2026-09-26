@@ -341,19 +341,14 @@ func relative(root: string, path: string) -> string
     return path
 end
 
-// sort_nodes ordena por nome (insercao: listas por diretorio sao pequenas;
-// a stdlib nao tem sort — docs/ACHADOS.md).
+func node_name(n: Node) -> string
+    return n.name
+end
+
+// sort_nodes ordena por nome, na ordem dos code points.
 func sort_nodes(nodes: Node[]) -> Node[]
     let out: Node[] = nodes
-    for i in range(1, length(out)) do
-        let j: int = i
-        while j > 0 && out[j - 1].name > out[j].name do
-            let t: Node = out[j - 1]
-            out[j - 1] = out[j]
-            out[j] = t
-            j = j - 1
-        end
-    end
+    sort_by(ref out, node_name)
     return out
 end
 
