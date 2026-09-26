@@ -8,7 +8,7 @@
 
 **Tech Stack:** Noxy v0.25.1 (stdlib `http_server`, `http_client`, `io`, `sys`, `strings`, `uuid`, `json_loads`/`json_dumps`, `spawn`/`spawn_task`, canais); HTML/CSS/JS puro; Go 1.25+ com `github.com/estevaofon/noxy/sdk/noxyplugin v0.1.0` e `github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6`; Chrome headless + DevTools Protocol para o smoke do cliente.
 
-**Spec:** `docs/superpowers/specs/2026-09-25-noxy-editor-design.md` (neste repositório). O plano cobre os dois repositórios da spec: `Noxy-Editor` (Tarefas 1 a 13 e 16) e `noxy_webview` (Tarefas 14 e 15).
+**Spec:** `docs/superpowers/specs/2026-09-25-noxy-editor-design.md` (neste repositório). O plano cobre os dois repositórios da spec: `Noxy-Editor` (Tasks 1 a 13 e 16) e `noxy_webview` (Tasks 14 e 15).
 
 **Todo o código deste plano foi executado e testado antes de ser escrito aqui**, num protótipo com o `noxy` v0.25.1 desta máquina: `tests/run.nx` (141 checks), `tests/protocol.nx` (10), `tests/web_smoke.py` num Chrome headless (23) e `go test -race ./window/`. Copie os blocos exatamente; onde um passo diz "Esperado", é o que o protótipo produziu.
 
@@ -23,18 +23,18 @@
 - `ref` exige uma variável: `session.load(ref x)` com `x` declarado antes, nunca `ref f()`.
 - Um parâmetro `ref T` é passado adiante sem `ref` (`place(ed, ...)` dentro de `move_left(ed: ref Editor, ...)`) e lido por valor com `*ed`.
 - A stdlib não tem `sort`: ordenação é por inserção em Noxy.
-- Plataforma testada: Linux (Ubuntu 26.04, Wayland). A janela pela extensão precisa de `libgtk-3-dev` e `libwebkit2gtk-4.1-dev` para compilar (instalação com sudo, pedida ao usuário na Tarefa 15) e de `google-chrome` no PATH para o smoke do cliente.
+- Plataforma testada: Linux (Ubuntu 26.04, Wayland). A janela pela extensão precisa de `libgtk-3-dev` e `libwebkit2gtk-4.1-dev` para compilar (instalação com sudo, pedida ao usuário na Task 15) e de `google-chrome` no PATH para o smoke do cliente.
 - O servidor escuta só em `127.0.0.1`, porta efêmera, com token na URL e no cabeçalho `X-Noxy-Token` (ou em `?t=` para o `sendBeacon`).
 
 ## Review Focus
 
 Entradas que a spec implica mas nenhum requisito nomeia, com o teste que as prende à tarefa dona do código:
 
-1. **Arquivo que não é UTF-8** aberto pela árvore: mensagem no status, nenhuma aba, editor segue vivo. Teste "arquivo que nao e UTF-8 vira mensagem, sem aba" (Tarefa 8).
-2. **Salvar quando o caminho não pode ser gravado** (diretório removido, sem permissão): mensagem, a aba continua suja, nada é perdido. Teste "salvar num caminho que nao existe vira mensagem e a aba continua suja" (Tarefa 8).
-3. **Evento com campo de tipo errado** (`"line": "x"`): 400, sem mudar a sessão, sem derrubar o dono. Teste "campo com tipo errado devolve vazio" (Tarefa 10) e "POST com JSON invalido e 400" (Tarefa 11).
-4. **Clique além do fim** (abaixo da última linha, à direita do texto): o cursor vai para o fim da última linha e a janela rola até ele. Teste "clique alem do fim vai para o fim da ultima linha" (Tarefa 5).
-5. **Arquivo grande** (5000 linhas): o quadro só carrega as linhas visíveis e sai em menos de 200 ms, senão cada tecla trava. Teste "arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms" (Tarefa 9).
+1. **Arquivo que não é UTF-8** aberto pela árvore: mensagem no status, nenhuma aba, editor segue vivo. Teste "arquivo que nao e UTF-8 vira mensagem, sem aba" (Task 8).
+2. **Salvar quando o caminho não pode ser gravado** (diretório removido, sem permissão): mensagem, a aba continua suja, nada é perdido. Teste "salvar num caminho que nao existe vira mensagem e a aba continua suja" (Task 8).
+3. **Evento com campo de tipo errado** (`"line": "x"`): 400, sem mudar a sessão, sem derrubar o dono. Teste "campo com tipo errado devolve vazio" (Task 10) e "POST com JSON invalido e 400" (Task 11).
+4. **Clique além do fim** (abaixo da última linha, à direita do texto): o cursor vai para o fim da última linha e a janela rola até ele. Teste "clique alem do fim vai para o fim da ultima linha" (Task 5).
+5. **Arquivo grande** (5000 linhas): o quadro só carrega as linhas visíveis e sai em menos de 200 ms, senão cada tecla trava. Teste "arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms" (Task 9).
 
 ## Mapa de arquivos
 
@@ -69,7 +69,7 @@ Cada tarefa do editor termina com `noxy tests/run.nx` passando (o número espera
 
 ---
 
-### Tarefa 1: Esqueleto do Noxy-Editor
+### Task 1: Esqueleto do Noxy-Editor
 
 **Files:**
 - Create: `noxy.mod`
@@ -236,7 +236,7 @@ git commit -m "chore: esqueleto do Noxy Editor — noxy.mod, harness de testes e
 ```
 
 
-### Tarefa 2: Document — linhas e posições
+### Task 2: Document — linhas e posições
 
 **Files:**
 - Create: `src/document.nx`
@@ -442,7 +442,7 @@ git commit -m "feat(document): linhas e posicoes em code points, inserir, apagar
 ```
 
 
-### Tarefa 3: Lexer — tokenizador de Noxy
+### Task 3: Lexer — tokenizador de Noxy
 
 **Files:**
 - Create: `src/lexer.nx`
@@ -694,7 +694,7 @@ git commit -m "feat(lexer): tokenizador de Noxy linha a linha com invariante de 
 ```
 
 
-### Tarefa 4: History — undo e redo por snapshot
+### Task 4: History — undo e redo por snapshot
 
 **Files:**
 - Create: `src/history.nx`
@@ -826,7 +826,7 @@ git commit -m "feat(history): undo e redo por snapshot com agrupamento de digita
 ```
 
 
-### Tarefa 5: Editing, parte 1 — cursor, seleção, movimento e scroll
+### Task 5: Editing, parte 1 — cursor, seleção, movimento e scroll
 
 **Files:**
 - Create: `src/editing.nx`
@@ -834,7 +834,7 @@ git commit -m "feat(history): undo e redo por snapshot com agrupamento de digita
 
 **Interfaces:**
 - Consumes: `doc.*`, `history.*`.
-- Produces: `Editor(doc, cursor, anchor, top, goal_col, history)`; `new_editor(d)`, `has_sel(ed)`, `sel_range(ed) -> Range`, `snapshot(ed)`, `first_non_space(line)`, `ensure_visible(ref ed, rows)`, `scroll(ref ed, delta, rows)`, `place(ref ed, p, shift, rows)`, `move_left/right/up/down/home/end/doc_start/doc_end/word_left/word_right(ref ed, shift, rows)`, `page_up/page_down(ref ed, shift, rows)`, `select_all(ref ed)`, `select_word_at(ref ed, p, rows)`, `select_line(ref ed, n, rows)`, `click(ref ed, p, shift, rows)`, `drag(ref ed, p, rows)`. A Tarefa 6 acrescenta o resto ao mesmo arquivo.
+- Produces: `Editor(doc, cursor, anchor, top, goal_col, history)`; `new_editor(d)`, `has_sel(ed)`, `sel_range(ed) -> Range`, `snapshot(ed)`, `first_non_space(line)`, `ensure_visible(ref ed, rows)`, `scroll(ref ed, delta, rows)`, `place(ref ed, p, shift, rows)`, `move_left/right/up/down/home/end/doc_start/doc_end/word_left/word_right(ref ed, shift, rows)`, `page_up/page_down(ref ed, shift, rows)`, `select_all(ref ed)`, `select_word_at(ref ed, p, rows)`, `select_line(ref ed, n, rows)`, `click(ref ed, p, shift, rows)`, `drag(ref ed, p, rows)`. A Task 6 acrescenta o resto ao mesmo arquivo.
 
 - [ ] **Passo 1: o teste que falha**
 
@@ -1262,14 +1262,14 @@ git commit -m "feat(editing): cursor, selecao, movimento por caractere, palavra 
 ```
 
 
-### Tarefa 6: Editing, parte 2 — texto, undo e clipboard
+### Task 6: Editing, parte 2 — texto, undo e clipboard
 
 **Files:**
 - Modify: `src/editing.nx` (acrescentar ao fim)
 - Modify: `tests/run.nx`
 
 **Interfaces:**
-- Consumes: tudo da Tarefa 5.
+- Consumes: tudo da Task 5.
 - Produces: `insert_text(ref ed, text, rows, now)`, `paste(ref ed, text, rows, now)`, `newline(ref ed, rows, now)`, `backspace(ref ed, rows, now)`, `delete_forward(ref ed, rows, now)`, `tab(ref ed, shift, rows, now)`, `toggle_comment(ref ed, rows, now)`, `copy(ed) -> string`, `cut(ref ed, rows, now) -> string`, `undo(ref ed, rows)`, `redo(ref ed, rows)`. `now` é `time_now()` em ms; os testes passam constantes.
 
 - [ ] **Passo 1: o teste que falha**
@@ -1637,7 +1637,7 @@ git commit -m "feat(editing): digitar, enter com indentacao, apagar, tab, coment
 ```
 
 
-### Tarefa 7: Runner — rodar um arquivo numa task
+### Task 7: Runner — rodar um arquivo numa task
 
 **Files:**
 - Create: `src/runner.nx`
@@ -1645,7 +1645,7 @@ git commit -m "feat(editing): digitar, enter com indentacao, apagar, tab, coment
 
 **Interfaces:**
 - Consumes: só `sys` e `strings`.
-- Produces: `RunState(running, task, text, version, cmd)`; `new_run()`, `command(root, rel) -> string`, `start(ref r, root, rel) -> string` ("" ou recusa), `poll(ref r)`. Também os helpers de teste `write_file`, `read_file`, `tmp_root()` (cria `tests/tmp/run` com `b.nx`, `a.txt`, `.hidden`, `sub/c.nx`, `hello.nx`) usados pelas Tarefas 8 a 10.
+- Produces: `RunState(running, task, text, version, cmd)`; `new_run()`, `command(root, rel) -> string`, `start(ref r, root, rel) -> string` ("" ou recusa), `poll(ref r)`. Também os helpers de teste `write_file`, `read_file`, `tmp_root()` (cria `tests/tmp/run` com `b.nx`, `a.txt`, `.hidden`, `sub/c.nx`, `hello.nx`) usados pelas Tasks 8 a 10.
 
 - [ ] **Passo 1: o teste que falha**
 
@@ -1803,7 +1803,7 @@ git commit -m "feat(runner): roda o arquivo numa task com cd na raiz e recolhe s
 ```
 
 
-### Tarefa 8: Session — abas, árvore, arquivos e modal
+### Task 8: Session — abas, árvore, arquivos e modal
 
 **Files:**
 - Create: `src/session.nx`
@@ -2210,7 +2210,7 @@ git commit -m "feat(session): raiz, arvore lazy, abas, abrir, salvar, fechar e m
 ```
 
 
-### Tarefa 9: Frame — o quadro para o navegador
+### Task 9: Frame — o quadro para o navegador
 
 **Files:**
 - Create: `src/frame.nx`
@@ -2474,7 +2474,7 @@ git commit -m "feat(frame): quadro JSON com linhas visiveis tokenizadas e spans 
 ```
 
 
-### Tarefa 10: Events — do JSON ao efeito, dentro de call_result
+### Task 10: Events — do JSON ao efeito, dentro de call_result
 
 **Files:**
 - Create: `src/events.nx`
@@ -2799,11 +2799,11 @@ git commit -m "feat(events): despacho de eventos com sessao por valor em call_re
 ```
 
 
-### Tarefa 11: Server — rotas, token e ponte com o dono
+### Task 11: Server — rotas, token e ponte com o dono
 
 **Files:**
 - Create: `src/server.nx`
-- Create: `web/index.html` (mínimo, substituído na Tarefa 12)
+- Create: `web/index.html` (mínimo, substituído na Task 12)
 - Create: `tests/protocol.nx`
 
 **Interfaces:**
@@ -2812,7 +2812,7 @@ git commit -m "feat(events): despacho de eventos com sessao por valor em call_re
 
 - [ ] **Passo 1: um `web/index.html` mínimo**
 
-Só para o teste de `GET /` ter o que conferir; a Tarefa 12 escreve o de verdade.
+Só para o teste de `GET /` ter o que conferir; a Task 12 escreve o de verdade.
 
 ```html
 <!doctype html>
@@ -3033,7 +3033,7 @@ git commit -m "feat(server): rotas estaticas, POST /event com token e ponte por 
 ```
 
 
-### Tarefa 12: Cliente web, lançador (fallback) e entrada
+### Task 12: Cliente web, lançador (fallback) e entrada
 
 **Files:**
 - Create: `web/index.html`, `web/editor.css`, `web/editor.js`
@@ -3256,7 +3256,7 @@ Esperado: traceback ao esperar a URL (o `editor.nx` ainda não existe, `url` fic
 ```noxy
 // src/launch.nx — abre a janela do editor. Nesta fase so o fallback: um
 // navegador em modo app (janela sem barra de endereco) ou o navegador
-// padrao. A extensao noxy_webview entra na frente disso na Tarefa 16.
+// padrao. A extensao noxy_webview entra na frente disso na Task 16.
 use sys
 use strings select replace
 
@@ -3927,7 +3927,7 @@ git commit -m "feat(web): cliente burro em HTML/CSS/JS, lancador em modo app e e
 ```
 
 
-### Tarefa 13: Documentação do editor
+### Task 13: Documentação do editor
 
 **Files:**
 - Create: `README.md`
@@ -3935,7 +3935,7 @@ git commit -m "feat(web): cliente burro em HTML/CSS/JS, lancador em modo app e e
 
 **Interfaces:**
 - Consumes: nada.
-- Produces: documentação do que existe até aqui; a Tarefa 16 não muda o README além do que já está escrito sobre a extensão.
+- Produces: documentação do que existe até aqui; a Task 16 não muda o README além do que já está escrito sobre a extensão.
 
 - [ ] **Passo 1: README**
 
@@ -4047,7 +4047,7 @@ git commit -m "docs: README do editor e checklist manual"
 ```
 
 
-### Tarefa 14: noxy_webview — repositório e a máquina de estados da janela
+### Task 14: noxy_webview — repositório e a máquina de estados da janela
 
 **Files:**
 - Create: `/home/estevao/Documentos/noxy_projects/noxy_webview/go.mod`
@@ -4067,7 +4067,7 @@ Tudo nesta tarefa roda em `/home/estevao/Documentos/noxy_projects/noxy_webview`.
 mkdir -p /home/estevao/Documentos/noxy_projects/noxy_webview/window && cd /home/estevao/Documentos/noxy_projects/noxy_webview && git init -q -b main
 ```
 
-`go.mod` (os `require` entram na Tarefa 15 com `go mod tidy`):
+`go.mod` (os `require` entram na Task 15 com `go mod tidy`):
 
 ```
 module github.com/estevaofon/noxy_webview
@@ -4395,7 +4395,7 @@ git commit -m "feat(window): maquina de estados da janela unica, sem dependencia
 ```
 
 
-### Tarefa 15: noxy_webview — o processo, o manifesto, o wrapper e o build
+### Task 15: noxy_webview — o processo, o manifesto, o wrapper e o build
 
 **Files:**
 - Create: `main.go`, `noxy_ext.toml`, `noxy_webview.nx`, `noxy.mod`, `examples/smoke.nx`, `release/build.sh`, `.github/workflows/release.yml`, `README.md`
@@ -4765,17 +4765,17 @@ git commit -m "feat: extensao por processo com open, wait, close e set_title sob
 ```
 
 
-### Tarefa 16: Integrar a janela nativa no editor
+### Task 16: Integrar a janela nativa no editor
 
 **Files:**
 - Modify: `src/launch.nx` (substituir pela versão com a extensão)
 - Modify: `editor.nx` (routine que espera a janela e o título)
 
 **Interfaces:**
-- Consumes: wrapper `noxy_webview` (Tarefa 15), `frame.title_of`.
+- Consumes: wrapper `noxy_webview` (Task 15), `frame.title_of`.
 - Produces: `launch.open_window` tenta a extensão antes do navegador; `launch.wait_window()`, `launch.set_title(title)`, `launch.close_window()`; `editor.nx` encerra quando a janela fecha e atualiza o título.
 
-Roda em `/home/estevao/Documentos/noxy_projects/Noxy-Editor`, com o link da Tarefa 15 no lugar.
+Roda em `/home/estevao/Documentos/noxy_projects/Noxy-Editor`, com o link da Task 15 no lugar.
 
 - [ ] **Passo 1: `src/launch.nx` final**
 
@@ -4858,7 +4858,7 @@ end
 
 - [ ] **Passo 2: `editor.nx` final**
 
-As diferenças para a Tarefa 12: `use src.frame as frame`, a routine `window_watch` que manda `quit` quando `wait_window` volta, e o título comparado a cada evento.
+As diferenças para a Task 12: `use src.frame as frame`, a routine `window_watch` que manda `quit` quando `wait_window` volta, e o título comparado a cada evento.
 
 ```noxy
 // editor.nx — Noxy Editor. Um editor de codigo para arquivos Noxy, escrito
