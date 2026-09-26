@@ -325,3 +325,243 @@ func copy(ed: Editor) -> string
     end
     return ed.doc.lines[ed.cursor.line] + "\n"
 end
+
+// delete_selection e interna: nao grava snapshot.
+func delete_selection(ed: ref Editor) -> void
+    if has_sel(*ed) then
+        let r: doc.Range = sel_range(*ed)
+        doc.delete_range(ref ed.doc, r.start, r.stop)
+        ed.cursor = r.start
+        ed.anchor = r.start
+    end
+end
+
+func insert_with_kind(ed: ref Editor, text: string, kind: string, rows: int, now: int) -> void
+    history.record(ref ed.history, snapshot(*ed), kind, now)
+    delete_selection(ed)
+    let p: doc.Pos = doc.insert(ref ed.doc, ed.cursor, text)
+    ed.cursor = p
+    ed.anchor = p
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+// insert_text e a digitacao: um caractere agrupa no undo como "typing".
+func insert_text(ed: ref Editor, text: string, rows: int, now: int) -> void
+    let kind: string = "other"
+    if length(text) == 1 && text != "\n" then
+        kind = "typing"
+    end
+    insert_with_kind(ed, text, kind, rows, now)
+end
+
+func paste(ed: ref Editor, text: string, rows: int, now: int) -> void
+    insert_with_kind(ed, text, "other", rows, now)
+end
+
+// newline copia a indentacao da linha atual; com o cursor dentro da
+// indentacao, copia so ate o cursor para nao duplicar.
+func newline(ed: ref Editor, rows: int, now: int) -> void
+    history.record(ref ed.history, snapshot(*ed), "other", now)
+    delete_selection(ed)
+    let line: string = ed.doc.lines[ed.cursor.line]
+    let fns: int = first_non_space(line)
+    if fns > ed.cursor.col then
+        fns = ed.cursor.col
+    end
+    let p: doc.Pos = doc.insert(ref ed.doc, ed.cursor, "\n" + substring(line, 0, fns))
+    ed.cursor = p
+    ed.anchor = p
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+func backspace(ed: ref Editor, rows: int, now: int) -> void
+    if has_sel(*ed) then
+        history.record(ref ed.history, snapshot(*ed), "other", now)
+        delete_selection(ed)
+    elif ed.cursor.col > 0 then
+        history.record(ref ed.history, snapshot(*ed), "delete", now)
+        let p: doc.Pos = doc.Pos(ed.cursor.line, ed.cursor.col - 1)
+        doc.delete_range(ref ed.doc, p, ed.cursor)
+        ed.cursor = p
+        ed.anchor = p
+    elif ed.cursor.line > 0 then
+        history.record(ref ed.history, snapshot(*ed), "other", now)
+        let p: doc.Pos = doc.Pos(ed.cursor.line - 1, doc.line_len(ed.doc, ed.cursor.line - 1))
+        doc.delete_range(ref ed.doc, p, ed.cursor)
+        ed.cursor = p
+        ed.anchor = p
+    end
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+func delete_forward(ed: ref Editor, rows: int, now: int) -> void
+    if has_sel(*ed) then
+        history.record(ref ed.history, snapshot(*ed), "other", now)
+        delete_selection(ed)
+    elif ed.cursor.col < doc.line_len(ed.doc, ed.cursor.line) then
+        history.record(ref ed.history, snapshot(*ed), "delete", now)
+        doc.delete_range(ref ed.doc, ed.cursor, doc.Pos(ed.cursor.line, ed.cursor.col + 1))
+    elif ed.cursor.line + 1 < length(ed.doc.lines) then
+        history.record(ref ed.history, snapshot(*ed), "other", now)
+        doc.delete_range(ref ed.doc, ed.cursor, doc.Pos(ed.cursor.line + 1, 0))
+    end
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+// touched_lines: [primeira, ultima] linha que a selecao toca. Uma selecao
+// que termina na coluna 0 de uma linha nao toca essa linha (VS Code).
+func touched_lines(ed: Editor) -> int[]
+    let r: doc.Range = sel_range(ed)
+    let last: int = r.stop.line
+    if last > r.start.line && r.stop.col == 0 then
+        last = last - 1
+    end
+    return [r.start.line, last]
+end
+
+// shift_col move cursor e ancora que estao na linha i em delta colunas.
+func shift_col(ed: ref Editor, i: int, delta: int) -> void
+    if ed.cursor.line == i then
+        ed.cursor.col = max0(ed.cursor.col + delta)
+    end
+    if ed.anchor.line == i then
+        ed.anchor.col = max0(ed.anchor.col + delta)
+    end
+end
+
+func indent_lines(ed: ref Editor, first: int, last: int, shift: bool) -> void
+    for i in range(first, last + 1) do
+        let line: string = ed.doc.lines[i]
+        if shift then
+            let cs: int[] = codes(line)
+            let n: int = 0
+            while n < 4 && n < length(cs) && cs[n] == 32 do
+                n = n + 1
+            end
+            ed.doc.lines[i] = substring(line, n, length(line))
+            shift_col(ed, i, -n)
+        else
+            ed.doc.lines[i] = TAB + line
+            shift_col(ed, i, 4)
+        end
+    end
+    ed.doc.dirty = true
+end
+
+// tab: sem selecao multilinha insere quatro espacos; com ela indenta o
+// bloco. Shift+Tab desindenta as linhas tocadas.
+func tab(ed: ref Editor, shift: bool, rows: int, now: int) -> void
+    let r: doc.Range = sel_range(*ed)
+    let multi: bool = has_sel(*ed) && r.start.line != r.stop.line
+    history.record(ref ed.history, snapshot(*ed), "other", now)
+    if !shift && !multi then
+        delete_selection(ed)
+        let p: doc.Pos = doc.insert(ref ed.doc, ed.cursor, TAB)
+        ed.cursor = p
+        ed.anchor = p
+    else
+        let tl: int[] = touched_lines(*ed)
+        indent_lines(ed, tl[0], tl[1], shift)
+    end
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+// toggle_comment: se toda linha nao vazia tocada comeca com //, remove
+// "// " (ou "//"); senao insere "// " na menor indentacao.
+func toggle_comment(ed: ref Editor, rows: int, now: int) -> void
+    let tl: int[] = touched_lines(*ed)
+    let all_commented: bool = true
+    let min_indent: int = -1
+    let any_text: bool = false
+    for i in range(tl[0], tl[1] + 1) do
+        let line: string = ed.doc.lines[i]
+        let fns: int = first_non_space(line)
+        if fns < length(line) then
+            any_text = true
+            if !starts_with(substring(line, fns, length(line)), "//") then
+                all_commented = false
+            end
+            if min_indent < 0 || fns < min_indent then
+                min_indent = fns
+            end
+        end
+    end
+    if !any_text then
+        return
+    end
+    history.record(ref ed.history, snapshot(*ed), "other", now)
+    for i in range(tl[0], tl[1] + 1) do
+        let line: string = ed.doc.lines[i]
+        let fns: int = first_non_space(line)
+        if fns < length(line) then
+            if all_commented then
+                let rest: string = substring(line, fns + 2, length(line))
+                let removed: int = 2
+                if starts_with(rest, " ") then
+                    rest = substring(rest, 1, length(rest))
+                    removed = 3
+                end
+                ed.doc.lines[i] = substring(line, 0, fns) + rest
+                shift_col(ed, i, -removed)
+            else
+                ed.doc.lines[i] = substring(line, 0, min_indent) + "// " + substring(line, min_indent, length(line))
+                shift_col(ed, i, 3)
+            end
+        end
+    end
+    ed.doc.dirty = true
+    ed.cursor = doc.clamp(ed.doc, ed.cursor)
+    ed.anchor = doc.clamp(ed.doc, ed.anchor)
+    ensure_visible(ed, rows)
+end
+
+func cut(ed: ref Editor, rows: int, now: int) -> string
+    let text: string = copy(*ed)
+    history.record(ref ed.history, snapshot(*ed), "other", now)
+    if has_sel(*ed) then
+        delete_selection(ed)
+    else
+        let line: int = ed.cursor.line
+        let count: int = length(ed.doc.lines)
+        if line + 1 < count then
+            doc.delete_range(ref ed.doc, doc.Pos(line, 0), doc.Pos(line + 1, 0))
+        elif line > 0 then
+            doc.delete_range(ref ed.doc, doc.Pos(line - 1, doc.line_len(ed.doc, line - 1)), doc.Pos(line, doc.line_len(ed.doc, line)))
+        else
+            doc.delete_range(ref ed.doc, doc.Pos(0, 0), doc.Pos(0, doc.line_len(ed.doc, 0)))
+        end
+        ed.cursor = doc.clamp(ed.doc, doc.Pos(line, 0))
+        ed.anchor = ed.cursor
+    end
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+    return text
+end
+
+func restore(ed: ref Editor, s: history.Snapshot, rows: int) -> void
+    ed.doc.lines = s.lines
+    ed.doc.dirty = true
+    ed.cursor = doc.clamp(ed.doc, s.cursor)
+    ed.anchor = ed.cursor
+    ed.goal_col = -1
+    ensure_visible(ed, rows)
+end
+
+func undo(ed: ref Editor, rows: int) -> void
+    let s: history.Snapshot? = history.undo(ref ed.history, snapshot(*ed))
+    if s != null then
+        restore(ed, s, rows)
+    end
+end
+
+func redo(ed: ref Editor, rows: int) -> void
+    let s: history.Snapshot? = history.redo(ref ed.history, snapshot(*ed))
+    if s != null then
+        restore(ed, s, rows)
+    end
+end
