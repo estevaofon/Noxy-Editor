@@ -8,38 +8,20 @@
 use sys
 use io
 use uuid
-use strings select starts_with, substring, ends_with
 use src.session as session
 use src.events as events
 use src.server as server
 use src.launch as launch
 use src.frame as frame
+use src.platform as platform
 
-func absolute(path: string) -> string
-    if starts_with(path, "/") then
-        return path
-    end
-    if path == "." then
-        return sys.getcwd()
-    end
-    if starts_with(path, "./") then
-        return sys.getcwd() + "/" + substring(path, 2, length(path))
-    end
-    return sys.getcwd() + "/" + path
-end
-
-func strip_slash(path: string) -> string
-    if length(path) > 1 && ends_with(path, "/") then
-        return substring(path, 0, length(path) - 1)
-    end
-    return path
-end
-
+// Os caminhos passam por platform.absolute: barras "/" em todas as
+// plataformas (o Windows aceita), sem barra final, "C:\proj" reconhecido.
 let args: string[] = sys.argv()
-let editor_dir: string = session.dirname(absolute(args[1]))
-let target: string = sys.getcwd()
+let editor_dir: string = session.dirname(platform.absolute(args[1]))
+let target: string = platform.cwd()
 if length(args) > 2 then
-    target = strip_slash(absolute(args[2]))
+    target = platform.absolute(args[2])
 end
 let first_file: string = ""
 let st: io.FileInfo = io.stat(target)

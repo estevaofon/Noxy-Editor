@@ -20,3 +20,18 @@ provam. Conferir a cada release, com a extensão instalada:
 - [ ] Trocar o tema pela paleta, fechar e abrir: o tema continua.
 - [ ] Num repositório, salvar um arquivo: ele fica âmbar na árvore e na aba; a branch aparece na status.
 - [ ] F5 num programa que imprime em loop: a saída aparece ao vivo; Parar encerra com `[interrompido]`.
+
+## Windows
+
+Com o `noxy` no PATH de um prompt (cmd ou PowerShell), sem Git Bash nem WSL:
+
+- [ ] `noxy editor.nx C:\pasta com espaço` abre a janela nativa (WebView2) com a árvore; o log diz `(webview)`.
+- [ ] `noxy editor.nx arquivo.nx` abre a pasta do arquivo com ele numa aba e o título `arquivo.nx — Noxy Editor`.
+- [ ] F5 num `.nx` que imprime aos poucos: a saída aparece ao vivo no painel e termina com `[saiu com N]`; nenhuma janela de console pisca.
+- [ ] F5 num programa sem fim e Parar: `[interrompido]` no painel e nenhum `noxy.exe` sobrando no Gerenciador de Tarefas além do editor.
+- [ ] Ctrl+` mostra `terminal: terminal indisponivel no Windows nesta versao` na barra de status; o editor continua.
+- [ ] Editar sem salvar, fechar pelo X, abrir a mesma pasta: a aba volta suja (a cópia fica em `%LOCALAPPDATA%\noxy-editor\recovery\`).
+- [ ] Trocar o tema e reabrir: continua (`%APPDATA%\noxy-editor\settings.json`).
+- [ ] Numa pasta com espaço e acento no caminho dentro de um repositório: a branch aparece na status e um arquivo salvo fica âmbar.
+- [ ] Fechar pelo X encerra o `noxy.exe` e o `noxy-plugin-webview-windows-amd64.exe`.
+- [ ] Com o binário da extensão renomeado (guarde o original), o editor avisa `janela pela extensao indisponivel` e abre no Chrome ou Edge em modo app; sem eles, no navegador padrão.

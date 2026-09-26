@@ -2,20 +2,23 @@
 // de endereco) ou no navegador padrao. O token do editor nao pode ir na
 // linha de comando (ps e /proc mostram os argumentos a qualquer usuario da
 // maquina), entao write_redirect grava uma pagina de redirecionamento num
-// diretorio temporario so do usuario (mktemp -d cria com 0700) e o
-// lancador passa o caminho dela em vez da URL.
+// diretorio temporario so do usuario (platform.make_temp_dir: mktemp -d com
+// 0700, ou o TEMP do usuario no Windows) e o lancador passa o caminho dela
+// em vez da URL.
 use sys
 use io
-use strings select replace, trim, starts_with, codes, substring
+use strings select starts_with, codes, substring
+use src.platform as platform
 
 let BROWSERS: string[] = ["google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge"]
+// no Windows o `start` acha estes pelo registro (App Paths), mesmo fora do PATH
+let WINDOWS_BROWSERS: string[] = ["chrome", "msedge", "brave"]
 
 func has_command(name: string) -> bool
+    if platform.windows() then
+        return sys.exec("where " + name + " >nul 2>nul").exit_code == 0
+    end
     return sys.exec("command -v " + name + " >/dev/null 2>&1").exit_code == 0
-end
-
-func shell_quote(s: string) -> string
-    return "'" + replace(s, "'", "'\\''") + "'"
 end
 
 // dir_of e o diretorio de um caminho; "." quando nao ha barra.
@@ -36,15 +39,20 @@ func dir_of(path: string) -> string
     return substring(path, 0, last)
 end
 
+// file_url monta a URL file:// de um caminho absoluto; "C:/x" ganha a barra
+// que o Windows nao tem ("file:///C:/x").
+func file_url(path: string) -> string
+    if starts_with(path, "/") then
+        return "file://" + path
+    end
+    return "file:///" + path
+end
+
 // write_redirect grava a pagina que leva a url e devolve o caminho dela;
 // "" se nao conseguiu criar o diretorio ou o arquivo.
 func write_redirect(url: string) -> string
-    let r: sys.SysResult = sys.exec_output("mktemp -d")
-    if !r.ok then
-        return ""
-    end
-    let dir: string = trim(r.output)
-    if !starts_with(dir, "/") then
+    let dir: string = platform.make_temp_dir()
+    if dir == "" then
         return ""
     end
     let path: string = dir + "/noxy-editor.html"
@@ -63,13 +71,35 @@ func cleanup(path: string) -> void
         return
     end
     io.remove(path)
-    sys.exec("rmdir " + shell_quote(dir_of(path)) + " 2>/dev/null")
+    io.remove(dir_of(path))     // o diretorio, ja vazio
+end
+
+// open_app_windows: `start "" programa args` abre chrome, msedge ou brave
+// pelo registro (App Paths), e devolve 1 quando o programa nao existe; por
+// fim o navegador padrao. A linha vai por variavel de ambiente porque o
+// comando do sys.exec nao pode ter aspas (platform.arg explica), e o `""`
+// e o titulo vazio que o start exige antes do programa.
+func open_app_windows(target: string) -> string
+    for b in WINDOWS_BROWSERS do
+        sys.setenv("NOXY_EDITOR_OPEN", "\"\" " + b + " \"--app=" + target + "\"")
+        if sys.exec("start %NOXY_EDITOR_OPEN% >nul 2>nul").exit_code == 0 then
+            return "app"
+        end
+    end
+    sys.setenv("NOXY_EDITOR_OPEN", "\"\" \"" + target + "\"")
+    if sys.exec("start %NOXY_EDITOR_OPEN% >nul 2>nul").exit_code == 0 then
+        return "browser"
+    end
+    return ""
 end
 
 // open_app abre target (uma URL ou file://...) e devolve "app" (janela sem
 // barra), "browser" ou "".
 func open_app(target: string) -> string
-    let q: string = shell_quote(target)
+    if platform.windows() then
+        return open_app_windows(target)
+    end
+    let q: string = platform.shell_quote(target)
     for b in BROWSERS do
         if has_command(b) then
             sys.exec(b + " --app=" + q + " >/dev/null 2>&1 &")

@@ -22,11 +22,12 @@ use src.recovery as recovery
 use src.gitinfo as gitinfo
 use src.minimap as minimap
 use src.term as term
+use src.platform as platform
 
 // cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
 // ~/.config de quem roda
-sys.setenv("NOXY_EDITOR_CACHE_DIR", sys.getcwd() + "/tests/tmp/cache")
-sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+sys.setenv("NOXY_EDITOR_CACHE_DIR", platform.cwd() + "/tests/tmp/cache")
+sys.setenv("NOXY_EDITOR_CONFIG_DIR", platform.cwd() + "/tests/tmp/config")
 
 let fails = 0
 let total = 0
@@ -337,8 +338,8 @@ func read_file(path: string) -> string
 end
 
 func tmp_root() -> string
-    let root: string = sys.getcwd() + "/tests/tmp/run"
-    sys.exec("rm -rf '" + root + "'")    // sempre do zero: nada de sobras de outra rodada
+    let root: string = platform.cwd() + "/tests/tmp/run"
+    platform.rmtree(root)    // sempre do zero: nada de sobras de outra rodada
     io.mkdir(root + "/sub")
     write_file(root + "/b.nx", "let b = 1\n")
     write_file(root + "/a.txt", "texto\n")
@@ -359,13 +360,13 @@ func run_until(r: ref runner.RunState) -> void
 end
 
 func alive(pid: int) -> bool
-    return sys.exec("kill -0 -" + to_str(pid) + " 2>/dev/null").exit_code == 0
+    return runner.group_alive(pid)
 end
 
 func test_runner() -> void
     print("runner")
     tmp_root()
-    let root: string = sys.getcwd() + "/tests/tmp/runner"
+    let root: string = platform.cwd() + "/tests/tmp/runner"
     io.mkdir(root)
     write_file(root + "/hello.nx", "use sys\nprint(\"oi\")\nsys.exit(3)\n")
     write_file(root + "/aos_poucos.nx", "use sys\nprint(\"um ação\")\nsys.sleep(700)\nprint(\"dois\")\n")
@@ -376,6 +377,22 @@ func test_runner() -> void
     run_until(ref r)
     check("saida e codigo de saida", !r.running && r.text == "$ noxy hello.nx\noi\n[saiu com 3]")
     check("diretorio temporario apagado no fim", !io.exists(r.dir))
+
+    // raiz com espaco e acento: o lancador precisa citar os caminhos
+    let acc: string = platform.cwd() + "/tests/tmp/runner com espaço"
+    io.mkdir(acc)
+    write_file(acc + "/olá.nx", "print(\"olá\")\n")
+    let ar: runner.RunState = runner.new_run()
+    check("start numa raiz com espaco e acento", runner.start(ref ar, acc, "olá.nx") == "")
+    run_until(ref ar)
+    check("saida da raiz com espaco e acento", !ar.running && ar.text == "$ noxy olá.nx\nolá\n[saiu com 0]")
+    // no Windows o cmd que rodou o programa pode ainda estar saindo, com a
+    // raiz como cwd, o que impede apagar a pasta na primeira tentativa
+    let tries: int = 0
+    while !platform.rmtree(acc) && tries < 20 do
+        sys.sleep(50)
+        tries = tries + 1
+    end
 
     let live: runner.RunState = runner.new_run()
     runner.start(ref live, root, "aos_poucos.nx")
@@ -405,7 +422,12 @@ func test_runner() -> void
     runner.start(ref bad, root, "nao.nx")
     run_until(ref bad)
     check("arquivo inexistente mostra o erro do noxy", strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
-    check("caminho com aspas simples", runner.command("/x y", "a'b.nx", "/t") == "cd '/x y' && exec noxy 'a'\\''b.nx'")
+    if platform.windows() then
+        check("comando do Windows: cd /D, aspas duplas e barras invertidas", runner.command("C:/x y", "sub/a.nx") == "cd /D \"C:\\x y\" && noxy \"sub\\a.nx\"")
+    else
+        check("caminho com aspas simples", runner.command("/x y", "a'b.nx") == "cd '/x y' && exec noxy 'a'\\''b.nx'")
+    end
+    check("parse_pid aceita so um numero", runner.parse_pid(" 4242\n") == 4242 && runner.parse_pid("") == 0 && runner.parse_pid("erro: x") == 0)
 end
 
 func test_session() -> void
@@ -469,7 +491,7 @@ func test_session() -> void
     session.save(ref s)
     check("salvar num caminho que nao existe vira mensagem e a aba continua suja", strings.contains(s.message, "nao consegui gravar") && s.tabs[s.active].editor.doc.dirty)
     let before2: int = length(s.tabs)
-    session.open_file(ref s, sys.getcwd() + "/tests/run.nx")
+    session.open_file(ref s, platform.cwd() + "/tests/run.nx")
     check("abrir caminho fora da raiz e recusado", length(s.tabs) == before2 && strings.contains(s.message, "fora da pasta"))
     check("relative e basename", session.relative(root, root + "/sub/c.nx") == "sub/c.nx" && session.basename("/a/b.nx") == "b.nx" && session.dirname("/a/b.nx") == "/a" && session.dirname("b.nx") == ".")
 end
@@ -593,7 +615,7 @@ func test_events() -> void
     check("ctrl+f5 para a execucao", !s.run.running && strings.contains(last, "[interrompido]"))
     session.close_tab(ref s, s.active)
     io.remove(root + "/sem_fim.nx")
-    sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+    sys.setenv("NOXY_EDITOR_CONFIG_DIR", platform.cwd() + "/tests/tmp/config")
     let fth: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"theme:nord\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando theme:nord muda o tema, grava e vai no quadro", s.settings.theme == "nord" && strings.contains(fth, "\"settings\":{\"theme\":\"nord\"}") && settings.load().theme == "nord")
     let fu2: string = events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"zzz\",\"rows\":20,\"tree_version\":2}", 19)
@@ -641,10 +663,11 @@ func test_events() -> void
     // busca na pasta pelo despacho
     events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f\",\"ctrl\":true,\"shift\":true,\"rows\":20,\"tree_version\":2}", 19)
     check("ctrl+shift+f abre o painel na aba busca", s.panel.open && s.panel.tab == "search")
-    events.dispatch(ref s, "{\"kind\":\"search\",\"text\":\"oi\",\"rows\":20,\"tree_version\":2}", 19)
-    check("search dispara a task", s.search.running && s.search.query == "oi")
+    // o dispatch ja faz um poll no fim: numa pasta pequena a task pode ter
+    // terminado dentro dele, e ai os resultados vem no proprio quadro
+    let fs: string = events.dispatch(ref s, "{\"kind\":\"search\",\"text\":\"oi\",\"rows\":20,\"tree_version\":2}", 19)
+    check("search dispara a task", s.search.query == "oi" && (s.search.running || length(s.search.hits) >= 1))
     let waited3: int = 0
-    let fs: string = ""
     while s.search.running && waited3 < 100 do
         sys.sleep(20)
         fs = events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 19)
@@ -657,7 +680,7 @@ func test_events() -> void
     let was_open: bool = s.panel.open
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando panel alterna o painel", s.panel.open != was_open)
-    io.remove(sys.getcwd() + "/tests/tmp/run/config/settings.json")
+    io.remove(platform.cwd() + "/tests/tmp/run/config/settings.json")
     events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
     check("quit marca quitting", s.quitting)
 
@@ -690,22 +713,88 @@ end
 
 func test_browser() -> void
     print("browser")
-    check("shell_quote", browser.shell_quote("a'b") == "'a'\\''b'")
+    check("shell_quote", platform.shell_quote("a'b") == "'a'\\''b'")
     check("dir_of", browser.dir_of("/a/b/c.html") == "/a/b" && browser.dir_of("c.html") == ".")
     let url: string = "http://127.0.0.1:1/?t=abc"
     let page: string = browser.write_redirect(url)
     check("write_redirect cria a pagina", page != "" && io.exists(page))
     check("a pagina redireciona para a url", strings.contains(read_file(page), "url=" + url))
     let dir: string = browser.dir_of(page)
-    let mode: sys.SysResult = sys.exec_output("stat -c %a " + browser.shell_quote(dir))
-    check("o diretorio e so do usuario (0700)", strings.trim(mode.output) == "700")
+    if platform.windows() then
+        check("o diretorio fica no TEMP do usuario", strings.starts_with(dir, platform.temp_dir() + "/"))
+    else
+        let mode: sys.SysResult = sys.exec_output("stat -c %a " + platform.shell_quote(dir))
+        check("o diretorio e so do usuario (0700)", strings.trim(mode.output) == "700")
+    end
+    check("file_url poe tres barras, tambem para C:/", browser.file_url("/tmp/x/noxy-editor.html") == "file:///tmp/x/noxy-editor.html" && browser.file_url("C:/Users/x/noxy-editor.html") == "file:///C:/Users/x/noxy-editor.html")
     browser.cleanup(page)
     check("cleanup remove a pagina e o diretorio", !io.exists(page) && !io.exists(dir))
 end
 
+func test_platform() -> void
+    print("platform")
+    check("windows() segue sys.os()", platform.windows() == (sys.os() == "windows"))
+    check("slashes normaliza as barras", platform.slashes("a\\b/c\\d") == "a/b/c/d" && platform.backslashes("a/b\\c") == "a\\b\\c")
+    check("is_absolute: /x, C:/x e c:\\x sim; x, ./x e vazio nao", platform.is_absolute("/x") && platform.is_absolute("C:/x") && platform.is_absolute("c:\\x") && !platform.is_absolute("x") && !platform.is_absolute("./x") && !platform.is_absolute(""))
+    let cwd: string = platform.cwd()
+    check("cwd sem barras invertidas e existe", !strings.contains(cwd, "\\") && io.stat(cwd).is_dir)
+    check("absolute: absoluto fica, relativo ganha o cwd, barras normalizadas", platform.absolute("/x/y") == "/x/y" && platform.absolute(".") == cwd && platform.absolute("./a") == cwd + "/a" && platform.absolute("a/b") == cwd + "/a/b" && platform.absolute("a\\b") == cwd + "/a/b" && platform.absolute("C:\\proj\\x") == "C:/proj/x")
+    check("absolute tira a barra final, menos da raiz e da unidade", platform.absolute("/x/") == "/x" && platform.absolute("/") == "/" && platform.absolute("C:\\") == "C:/" && platform.absolute("C:\\x\\") == "C:/x")
+    check("dirname com unidade", session.dirname("D:/x/y") == "D:/x" && session.dirname("D:/x") == "D:/" && session.dirname("/x") == "/" && session.dirname("x") == ".")
+
+    let saved_c: sys.EnvResult = sys.getenv("XDG_CACHE_HOME")
+    let saved_k: sys.EnvResult = sys.getenv("XDG_CONFIG_HOME")
+    let saved_rc: sys.EnvResult = sys.getenv("NOXY_EDITOR_CACHE_DIR")
+    let saved_sc: sys.EnvResult = sys.getenv("NOXY_EDITOR_CONFIG_DIR")
+    sys.setenv("XDG_CACHE_HOME", "")
+    sys.setenv("XDG_CONFIG_HOME", "")
+    if platform.windows() then
+        check("cache_home no Windows e LOCALAPPDATA", platform.cache_home() == platform.slashes(sys.getenv("LOCALAPPDATA").value))
+        check("config_home no Windows e APPDATA", platform.config_home() == platform.slashes(sys.getenv("APPDATA").value))
+        check("temp_dir no Windows e TEMP", platform.temp_dir() == platform.slashes(sys.getenv("TEMP").value))
+    else
+        check("cache_home sem XDG e ~/.cache", platform.cache_home() == sys.getenv("HOME").value + "/.cache")
+        check("config_home sem XDG e ~/.config", platform.config_home() == sys.getenv("HOME").value + "/.config")
+        check("temp_dir existe", platform.temp_dir() != "" && io.stat(platform.temp_dir()).is_dir)
+    end
+    sys.setenv("XDG_CACHE_HOME", "/xdg/cache")
+    sys.setenv("XDG_CONFIG_HOME", "/xdg/config")
+    check("XDG_CACHE_HOME e XDG_CONFIG_HOME valem em qualquer plataforma", platform.cache_home() == "/xdg/cache" && platform.config_home() == "/xdg/config")
+    sys.setenv("NOXY_EDITOR_CACHE_DIR", "")
+    sys.setenv("NOXY_EDITOR_CONFIG_DIR", "")
+    check("recovery e settings ficam em <cache>/noxy-editor e <config>/noxy-editor", recovery.cache_dir() == "/xdg/cache/noxy-editor" && settings.config_dir() == "/xdg/config/noxy-editor")
+    sys.setenv("NOXY_EDITOR_CACHE_DIR", saved_rc.value)
+    sys.setenv("NOXY_EDITOR_CONFIG_DIR", saved_sc.value)
+    sys.setenv("XDG_CACHE_HOME", saved_c.value)
+    sys.setenv("XDG_CONFIG_HOME", saved_k.value)
+
+    let tmp: string = platform.make_temp_dir()
+    check("make_temp_dir cria um diretorio novo dentro de temp_dir", tmp != "" && io.stat(tmp).is_dir && strings.starts_with(tmp, platform.temp_dir() + "/"))
+    io.mkdir(tmp + "/a/b")
+    write_file(tmp + "/a/b/c.txt", "x")
+    write_file(tmp + "/d.txt", "y")
+    check("rmtree apaga arquivos e pastas aninhadas", platform.rmtree(tmp) && !io.exists(tmp))
+    check("rmtree do que nao existe e true", platform.rmtree(tmp))
+
+    check("shell_quote", platform.shell_quote("a'b") == "'a'\\''b'")
+    let q: string = " 2>/dev/null"
+    if platform.windows() then
+        q = " 2>nul"
+    end
+    check("quiet descarta o stderr na sintaxe do shell da plataforma", platform.quiet() == q)
+    let a: string = platform.arg("NOXY_EDITOR_TEST_ARG", "a b")
+    if platform.windows() then
+        check("arg no Windows: valor entre aspas numa variavel de ambiente, %NOME% no comando", a == "%NOXY_EDITOR_TEST_ARG%" && sys.getenv("NOXY_EDITOR_TEST_ARG").value == "\"a b\"")
+        check("o cmd expande a variavel com as aspas intactas", sys.exec_output("echo " + a).output == "\"a b\"")
+    else
+        check("arg no Unix: aspas simples", a == "'a b'")
+        check("o sh recebe o valor inteiro", sys.exec_output("echo " + a).output == "a b")
+    end
+end
+
 func test_settings() -> void
     print("settings")
-    let dir: string = sys.getcwd() + "/tests/tmp/config"
+    let dir: string = platform.cwd() + "/tests/tmp/config"
     sys.setenv("NOXY_EDITOR_CONFIG_DIR", dir)
     io.remove(dir + "/settings.json")
     let d: settings.Settings = settings.load()
@@ -751,7 +840,7 @@ func test_index() -> void
     check("sem casamento devolve vazio", length(index.filter(files, "zzz", 10)) == 0)
     check("consulta nao diferencia maiusculas", index.filter(files, "HELLO", 10)[0].path == "hello.nx")
     check("score: nome inteiro > caminho longo", index.score("editor.nx", "edit") > index.score("src/x/editorial.nx", "edit"))
-    sys.exec("rm -rf " + browser.shell_quote(root + "/noxy_libs"))
+    platform.rmtree(root + "/noxy_libs")
 end
 
 func test_find() -> void
@@ -830,14 +919,14 @@ func test_search() -> void
     check("linha longa e cortada em 200 caracteres ao redor da ocorrencia", length(lh) == 1 && length(lh[0].text) <= 200 && strings.contains(lh[0].text, "zz"))
     io.remove(root + "/long.txt")
     io.remove(root + "/bin.dat")
-    sys.exec("rm -rf " + browser.shell_quote(root + "/node_modules"))
+    platform.rmtree(root + "/node_modules")
 end
 
 func test_recovery() -> void
     print("recovery")
-    let cache: string = sys.getcwd() + "/tests/tmp/cache"
+    let cache: string = platform.cwd() + "/tests/tmp/cache"
     sys.setenv("NOXY_EDITOR_CACHE_DIR", cache)
-    sys.exec("rm -rf " + browser.shell_quote(cache))
+    platform.rmtree(cache)
     check("sem copias, lista vazia", length(recovery.list()) == 0)
     check("write grava a copia", recovery.write("/x/a.nx", "oi\n", "\n", 5))
     let cs: recovery.Copy[] = recovery.list()
@@ -924,13 +1013,18 @@ func test_recovery() -> void
 end
 
 func git_repo() -> string
-    let repo: string = sys.getcwd() + "/tests/tmp/git"
-    sys.exec("rm -rf '" + repo + "'")
+    let repo: string = platform.cwd() + "/tests/tmp/git com espaço"
+    platform.rmtree(repo)
     io.mkdir(repo + "/proj/sub")
     write_file(repo + "/proj/a.nx", "let a = 1\n")
     write_file(repo + "/proj/b.nx", "let b = 1\n")
     write_file(repo + "/fora.nx", "x\n")
-    sys.exec("cd '" + repo + "' && git init -q -b principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
+    let cd: string = "cd "
+    if platform.windows() then
+        cd = "cd /D "
+    end
+    // symbolic-ref em vez de init -b: funciona em git anterior ao 2.28
+    sys.exec(cd + platform.arg("NOXY_EDITOR_TEST_REPO", repo) + " && git init -q && git symbolic-ref HEAD refs/heads/principal && git -c user.name=t -c user.email=t@t add . && git -c user.name=t -c user.email=t@t commit -q -m init")
     write_file(repo + "/proj/a.nx", "let a = 2\n")
     write_file(repo + "/proj/sub/novo.nx", "n\n")
     write_file(repo + "/proj/café.nx", "c\n")
@@ -946,15 +1040,17 @@ func test_gitinfo() -> void
     check("pastas com alteracao dentro", has_key(p.dirs, "/r/sub") && !has_key(p.dirs, "/r"))
     let q: gitinfo.Parsed = gitinfo.parse(" M proj/x.nx\n?? outro/y.nx\n?? proj/s/z.nx\n", "proj/", "/r/proj")
     check("prefixo: so o que esta sob a raiz aberta, relativo a ela", length(keys(q.status)) == 2 && q.status["/r/proj/x.nx"] == "M" && has_key(q.dirs, "/r/proj/s"))
+    let crlf: gitinfo.Parsed = gitinfo.parse("#\r\n M a.nx\r\n?? b.nx\r\n", "", "/r")
+    check("porcelain com \\r\\n (o cmd do Windows) nao deixa \\r no caminho", length(keys(crlf.status)) == 2 && crlf.status["/r/a.nx"] == "M" && crlf.status["/r/b.nx"] == "?")
 
     let repo: string = git_repo()
     let g: gitinfo.GitInfo = gitinfo.collect(repo + "/proj")
     check("repositorio: branch", g.available && g.branch == "principal")
     check("repositorio: modificado (primeira linha do porcelain, com espaco inicial), apagado e novo, so dentro da raiz", g.status[repo + "/proj/a.nx"] == "M" && g.status[repo + "/proj/b.nx"] == "D" && g.status[repo + "/proj/sub/novo.nx"] == "?" && !has_key(g.status, repo + "/fora.nx") && has_key(g.dirs, repo + "/proj/sub"))
     check("caminho com acento ganha status (git cita em octal por padrao)", g.status[repo + "/proj/café.nx"] == "?")
-    let tmp: string = strings.trim(sys.exec_output("mktemp -d").output)
+    let tmp: string = platform.make_temp_dir()
     check("fora de um repositorio: indisponivel", !gitinfo.collect(tmp).available)
-    sys.exec("rmdir '" + tmp + "'")
+    io.remove(tmp)
 end
 
 func test_git_session() -> void
@@ -1010,9 +1106,9 @@ func test_minimap() -> void
     io.remove(root + "/longo.nx")
 end
 
-func test_term() -> void
-    print("terminal")
-    let root: string = tmp_root()
+// test_term_shell conversa com um shell de verdade: so onde a noxy_pty abre
+// um terminal (Linux e macOS).
+func test_term_shell(root: string) -> void
     let s: session.Session = session.new_session(root)
     session.load(ref s)
     let f0: string = events.dispatch(ref s, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
@@ -1035,9 +1131,6 @@ func test_term() -> void
     check("term_close fecha e zera o id atual", !s.term.open && term.current_id == 0)
     let after: term.ReadResult = term.read(id, 50)
     check("depois de fechar, ler da erro", !after.ok)
-    let e: term.Term = term.new_term()
-    term.open(ref e, "/nao/existe", 80, 24)
-    check("falha ao abrir vira erro na sessao, sem derrubar", !e.open && e.error != "")
     let x: term.Term = term.new_term()
     term.open(ref x, root, 80, 24)
     term.write(x.id, base64_encode("exit\n"))
@@ -1050,6 +1143,24 @@ func test_term() -> void
     end
     check("fim do shell e reportado como exited", ended)
     term.close(ref x)
+end
+
+func test_term() -> void
+    print("terminal")
+    let root: string = tmp_root()
+    if platform.windows() then
+        check("shell do terminal no Windows e o cmd.exe do COMSPEC", strings.ends_with(strings.to_lower(term.shell()), "cmd.exe"))
+        let w: session.Session = session.new_session(root)
+        session.load(ref w)
+        let fw: string = events.dispatch(ref w, "{\"kind\":\"term_open\",\"cols\":80,\"term_rows\":24,\"tree_version\":2}", 1)
+        check("no Windows, term_open falha com a mensagem da extensao, sem derrubar", !w.term.open && term.current_id == 0 && strings.contains(w.term.error, "Windows") && strings.contains(fw, "terminal indisponivel"))
+    else
+        check("shell do terminal vem de SHELL ou /bin/sh", term.shell() != "")
+        test_term_shell(root)
+    end
+    let e: term.Term = term.new_term()
+    term.open(ref e, "/nao/existe", 80, 24)
+    check("falha ao abrir vira erro na sessao, sem derrubar", !e.open && e.error != "")
 
     // sair do editor fecha o terminal e para o programa em execucao
     let z: session.Session = session.new_session(root)
@@ -1076,6 +1187,7 @@ test_session()
 test_frame()
 test_events()
 test_browser()
+test_platform()
 test_settings()
 test_commands()
 test_index()
