@@ -23,7 +23,7 @@ func open_window(url: string) -> string
     let target: string = url
     redirect = browser.write_redirect(url)
     if redirect != "" then
-        target = "file://" + redirect
+        target = browser.file_url(redirect)
     else
         eprint("nao consegui criar a pagina de redirecionamento; a URL vai na linha de comando")
     end

@@ -1,7 +1,7 @@
 // src/session.nx — a sessao: raiz aberta, abas, arvore de arquivos, modal,
 // execucao e as operacoes de arquivo. Nao conhece HTTP nem o quadro. Toda
 // falha de arquivo vira message; nada aqui levanta erro.
-use strings select substring, split, join_count, starts_with
+use strings select substring, split, join_count, starts_with, ends_with
 use io
 use errors select Result, Failure
 use src.document as doc
@@ -318,6 +318,8 @@ func basename(path: string) -> string
     return parts[length(parts) - 1]
 end
 
+// dirname e a pasta do caminho: "/" para "/x", "D:/" para "D:/x" (a raiz
+// de uma unidade no Windows), "." sem barra.
 func dirname(path: string) -> string
     let parts: string[] = split(path, "/").parts
     if length(parts) <= 1 then
@@ -325,6 +327,9 @@ func dirname(path: string) -> string
     end
     if length(parts) == 2 && parts[0] == "" then
         return "/"
+    end
+    if length(parts) == 2 && ends_with(parts[0], ":") then
+        return parts[0] + "/"
     end
     return join_count(parts, "/", length(parts) - 1)
 end

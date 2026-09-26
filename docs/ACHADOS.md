@@ -95,3 +95,43 @@ dados: a primeira linha do `git status --porcelain` (` M a.nx`) perdia o
 espaço e o caminho perdia a primeira letra. **Contorno:** uma linha `#` antes
 do comando (`echo '#'; git status ...`), ignorada no parse. **Sugestão:**
 devolver a saída intacta; quem quiser aparar usa `strings.trim`.
+
+## 10. No Windows, `sys.exec` não consegue entregar aspas duplas ao `cmd`
+
+**Onde:** `src/platform.nx` (`arg`), `src/runner.nx`, `src/gitinfo.nx`,
+`src/browser.nx`. **O que:** no Windows `sys.exec` e `sys.exec_output` rodam
+`exec.Command("cmd", "/C", comando)`, e o Go monta a linha de comando
+escapando cada `"` do argumento como `\"` (`syscall.EscapeArg`); o `cmd`
+tira só as aspas externas e repassa os `\"` ao programa, que os lê como
+aspas literais. `echo "a b"` imprime `\"a b\"`, e `git -C "D:\pasta com
+espaço" status` chega ao git como `-C`, `"D:\pasta`, `com`, `espaço"`. Sem
+aspas, nenhum caminho com espaço passa. **Contorno:** o valor vai, já entre
+aspas, numa variável de ambiente (`sys.setenv`, que o filho herda) e o
+comando recebe `%NOME%`, que o `cmd` expande antes de tratar aspas
+(`platform.arg`); o runner monta a linha inteira do programa numa variável
+e o PowerShell a repassa a um `cmd` oculto (`Start-Process -PassThru`, que
+também é o único jeito de obter o PID). **Sugestão:** no Windows, `sys.exec`
+usar `SysProcAttr.CmdLine` com `cmd /S /C "<comando>"` intacto, ou um
+`sys.exec_args(argv)` sem shell.
+
+## 11. Não há como saber os diretórios do usuário nem o temporário
+
+**Onde:** `src/platform.nx`. **O que:** a stdlib não tem equivalente a
+`os.UserCacheDir`, `os.UserConfigDir` e `os.TempDir`. `HOME` não existe no
+Windows (é `USERPROFILE`), e cache e configuração ficam em `LOCALAPPDATA` e
+`APPDATA`, não em `~/.cache` e `~/.config`; o temporário é `TEMP`, não
+`/tmp`, e `mktemp` não existe. **Contorno:** montar em Noxy a partir das
+variáveis de ambiente de cada plataforma, com `uuid.uuid4()` no lugar do
+`mktemp -d`. **Sugestão:** `sys.cache_dir()`, `sys.config_dir()` e
+`sys.temp_dir()` sobre as funções do Go.
+
+## 12. `sys.exec_output` recusa a saída do console do Windows
+
+**Onde:** `runner.group_alive` e `runner.kill_group`. **O que:** `tasklist`
+e `taskkill` escrevem as mensagens na codepage do console (cp850 num
+Windows em português), que não é UTF-8; `exec_output` devolve `ok=false`,
+`output=""` e um erro de UTF-8 mesmo com `exit_code=0`, e não há como ler
+os bytes. **Contorno:** `tasklist /FO CSV`, que só tem ASCII quando há
+tarefa, e tratar `ok=false` como "sem processo"; `taskkill` por `sys.exec`
+com `>nul 2>nul`. **Sugestão:** um `output_bytes` no `SysResult`, ou
+decodificar pela codepage do console.

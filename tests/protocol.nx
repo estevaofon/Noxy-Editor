@@ -8,11 +8,12 @@ use http_client
 use src.session as session
 use src.events as events
 use src.server as server
+use src.platform as platform
 
 // cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
 // ~/.config de quem roda
-sys.setenv("NOXY_EDITOR_CACHE_DIR", sys.getcwd() + "/tests/tmp/cache")
-sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+sys.setenv("NOXY_EDITOR_CACHE_DIR", platform.cwd() + "/tests/tmp/cache")
+sys.setenv("NOXY_EDITOR_CONFIG_DIR", platform.cwd() + "/tests/tmp/config")
 
 let fails = 0
 let total = 0
@@ -33,7 +34,7 @@ func write_file(path: string, text: string) -> void
     io.close(f)
 end
 
-let root: string = sys.getcwd() + "/tests/tmp/protocol"
+let root: string = platform.cwd() + "/tests/tmp/protocol"
 io.mkdir(root)
 write_file(root + "/p.nx", "let p = 1\n")
 
@@ -65,7 +66,7 @@ func post(base: string, tok: string, body: string) -> http_client.ClientResponse
     return http_client.request(ref c, "POST", base + "/event", hs, 2, to_bytes(body))
 end
 
-let port: int = server.start(sys.getcwd() + "/web", "segredo")
+let port: int = server.start(platform.cwd() + "/web", "segredo")
 check("bind numa porta efemera", port > 0)
 spawn(owner)
 let base: string = "http://127.0.0.1:" + to_str(port)
@@ -92,6 +93,7 @@ let tbody: string = to_str(typed.body)
 check("abrir, end e digitar refletem no quadro", strings.contains(tbody, "\"t\":\"10\"") && strings.contains(tbody, "\"dirty\":true") && strings.contains(tbody, "\"tree\":[]"))
 // terminal: abre pelo /event, escreve e le pelas rotas /term fora do dono
 // rows e o tamanho do editor; term_rows e o do xterm, que vai para o pty
+func term_over_http() -> void
 let to: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"term_open\",\"cols\":80,\"rows\":40,\"term_rows\":24,\"tree_version\":2}")
 let tid: int = s.term.id
 check("term_open pelo /event", to.status_code == 200 && tid > 0)
@@ -127,6 +129,20 @@ while !ended && tn < 20 do
     tn = tn + 1
 end
 check("fim do shell chega como exited", ended)
+end
+
+if platform.windows() then
+    // a noxy_pty no Windows recusa abrir: o erro vai na mensagem do quadro e
+    // as rotas /term continuam protegidas
+    let tw0: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"term_open\",\"cols\":80,\"rows\":40,\"term_rows\":24,\"tree_version\":2}")
+    check("no Windows, term_open pelo /event responde com a mensagem da extensao", tw0.status_code == 200 && s.term.id == 0 && strings.contains(to_str(tw0.body), "terminal indisponivel"))
+    let nz: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":1}")
+    check("sem terminal aberto, /term/read e 404", nz.status_code == 404)
+    let tnok0: http_client.ClientResponse = post_to(base + "/term/read", "errado", "{\"id\":1}")
+    check("rota do terminal exige o token", tnok0.status_code == 403)
+else
+    term_over_http()
+end
 
 let beacon: http_client.ClientResponse = http_client.post(base + "/event?t=segredo", to_bytes("{\"kind\":\"quit\",\"rows\":10,\"tree_version\":2}"))
 check("quit com token na query (sendBeacon) e aceito", beacon.status_code == 200)

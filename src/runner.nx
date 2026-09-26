@@ -1,13 +1,15 @@
-// src/runner.nx — roda um arquivo .nx em segundo plano, num grupo de
-// processos proprio (setsid), com a saida num arquivo temporario lido aos
-// pedacos a cada poll: a saida aparece ao vivo e Parar mata o grupo inteiro
-// (o programa e o que ele abriu). O Noxy nao mata processos nem le saida de
-// processo sem bloquear (docs/ACHADOS.md); o shell e os arquivos resolvem.
-// O programa roda com a raiz como cwd e a entrada em /dev/null. Linux e
-// macOS; o Windows ainda nao e suportado aqui.
+// src/runner.nx — roda um arquivo .nx em segundo plano, com a saida num
+// arquivo temporario lido aos pedacos a cada poll: a saida aparece ao vivo e
+// Parar mata o programa e o que ele abriu. O Noxy nao mata processos nem le
+// saida de processo sem bloquear (docs/ACHADOS.md); o shell e os arquivos
+// resolvem. No Linux e macOS o programa roda num grupo de processos proprio
+// (setsid) e Parar e kill no grupo; no Windows o PowerShell o inicia num cmd
+// oculto e devolve o PID, e Parar e taskkill /T na arvore. O programa roda
+// com a raiz como cwd e a entrada em /dev/null (nul no Windows).
 use sys
 use io
-use strings select replace, ends_with, trim, is_valid_utf8
+use strings select ends_with, trim, is_valid_utf8, contains, codes
+use src.platform as platform
 
 let KILL_AFTER_MS = 2000
 
@@ -17,7 +19,7 @@ struct RunState
     version: int       // muda a cada alteracao de text ou running
     cmd: string        // o comando do programa (sem o lancador)
     dir: string        // diretorio temporario com out e code
-    pid: int           // lider do grupo de processos
+    pid: int           // lider do grupo de processos (Unix) ou o cmd da arvore (Windows)
     out: io.File       // aberto para leitura incremental de dir/out
     pending: bytes     // bytes do fim de uma leitura que ainda nao formam UTF-8
     stopping: bool
@@ -28,13 +30,47 @@ func new_run() -> RunState
     return RunState(false, "", 0, "", "", 0, io.File(-1, "", "", false), b"", false, 0)
 end
 
-func shell_quote(s: string) -> string
-    return "'" + replace(s, "'", "'\\''") + "'"
+// command e o que roda: cd na raiz e noxy no arquivo, na sintaxe do shell da
+// plataforma. No Windows as aspas sao seguras aqui porque a linha inteira vai
+// por variavel de ambiente (launch_windows), nao pelo comando do sys.exec.
+func command(root: string, rel: string) -> string
+    if platform.windows() then
+        return "cd /D \"" + platform.backslashes(root) + "\" && noxy \"" + platform.backslashes(rel) + "\""
+    end
+    return "cd " + platform.shell_quote(root) + " && exec noxy " + platform.shell_quote(rel)
 end
 
-// command e o que roda dentro do grupo: cd na raiz e exec do noxy.
-func command(root: string, rel: string, dir: string) -> string
-    return "cd " + shell_quote(root) + " && exec noxy " + shell_quote(rel)
+// parse_pid le o PID que o lancador imprimiu; 0 se nao veio um numero.
+func parse_pid(s: string) -> int
+    let t: string = trim(s)
+    if t == "" then
+        return 0
+    end
+    for c in codes(t) do
+        if c < 48 || c > 57 then
+            return 0
+        end
+    end
+    return to_int(t)
+end
+
+// launch_unix: `setsid sh -c '...' & echo $!` da o PID do lider de um grupo
+// de processos proprio; a saida e o codigo vao para dir/out e dir/code.
+func launch_unix(cmd: string, dir: string) -> string
+    let inner: string = "(" + cmd + ") >> " + platform.shell_quote(dir + "/out") + " 2>&1 < /dev/null; echo $? > " + platform.shell_quote(dir + "/code")
+    let l: sys.SysResult = sys.exec_output("setsid sh -c " + platform.shell_quote(inner) + " > /dev/null 2>&1 & echo $!")
+    return l.output
+end
+
+// launch_windows: o PowerShell inicia um cmd oculto (Start-Process -PassThru
+// imprime o PID) com a linha inteira numa variavel de ambiente, porque o
+// comando do sys.exec nao pode ter aspas (platform.arg explica). /V:ON faz
+// !errorlevel! ser lido depois do noxy terminar, nao ao montar a linha.
+func launch_windows(cmd: string, dir: string) -> string
+    let wdir: string = platform.backslashes(dir)
+    sys.setenv("NOXY_EDITOR_RUN_ARGS", "/V:ON /C " + cmd + " >> \"" + wdir + "\\out\" 2>&1 < nul & echo !errorlevel! > \"" + wdir + "\\code\"")
+    let l: sys.SysResult = sys.exec_output("powershell -NoProfile -NonInteractive -Command (Start-Process -FilePath $env:ComSpec -ArgumentList $env:NOXY_EDITOR_RUN_ARGS -WindowStyle Hidden -PassThru).Id")
+    return l.output
 end
 
 // start dispara a execucao; devolve "" ou a mensagem de recusa.
@@ -42,19 +78,27 @@ func start(r: ref RunState, root: string, rel: string) -> string
     if r.running then
         return "ja esta rodando"
     end
-    let mk: sys.SysResult = sys.exec_output("mktemp -d")
-    let dir: string = trim(mk.output)
-    if !mk.ok || dir == "" then
+    let dir: string = platform.make_temp_dir()
+    if dir == "" then
         return "nao consegui criar o diretorio temporario da execucao"
     end
     let out: string = dir + "/out"
     let touch: io.File = io.open(out, "w")
     io.close(touch)
-    r.cmd = command(root, rel, dir)
-    let inner: string = "(" + r.cmd + ") >> " + shell_quote(out) + " 2>&1 < /dev/null; echo $? > " + shell_quote(dir + "/code")
-    let launch: sys.SysResult = sys.exec_output("setsid sh -c " + shell_quote(inner) + " > /dev/null 2>&1 & echo $!")
+    r.cmd = command(root, rel)
+    let printed: string = ""
+    if platform.windows() then
+        printed = launch_windows(r.cmd, dir)
+    else
+        printed = launch_unix(r.cmd, dir)
+    end
+    let pid: int = parse_pid(printed)
+    if pid == 0 then
+        platform.rmtree(dir)
+        return "nao consegui iniciar o programa: o lancador nao devolveu o PID"
+    end
     r.dir = dir
-    r.pid = to_int(trim(launch.output))
+    r.pid = pid
     r.out = io.open(out, "r")
     r.pending = b""
     r.stopping = false
@@ -86,8 +130,31 @@ func read_new(r: ref RunState) -> void
     r.version = r.version + 1
 end
 
+// group_alive: o programa (ou algo do grupo ou da arvore dele) ainda existe.
 func group_alive(pid: int) -> bool
+    if platform.windows() then
+        // tasklist filtra por PID e em CSV traz o PID entre aspas. Sem
+        // tarefa ele avisa em texto na codificacao do console, que o
+        // exec_output pode recusar como UTF-8: ok=false tambem e "morto".
+        let f: string = platform.arg("NOXY_EDITOR_RUN_FILTER", "PID eq " + to_str(pid))
+        let t: sys.SysResult = sys.exec_output("tasklist /NH /FO CSV /FI " + f)
+        return t.ok && contains(t.output, "\"" + to_str(pid) + "\"")
+    end
     return sys.exec("kill -0 -" + to_str(pid) + " 2>/dev/null").exit_code == 0
+end
+
+// kill_group manda TERM (ou KILL) ao grupo; no Windows nao ha TERM, e o
+// taskkill /T /F derruba a arvore inteira de uma vez.
+func kill_group(pid: int, force: bool) -> void
+    if platform.windows() then
+        sys.exec("taskkill /T /F /PID " + to_str(pid) + " >nul 2>nul")
+        return
+    end
+    let sig: string = "-TERM"
+    if force then
+        sig = "-KILL"
+    end
+    sys.exec("kill " + sig + " -" + to_str(pid) + " 2>/dev/null")
 end
 
 func finish(r: ref RunState, tail: string) -> void
@@ -97,7 +164,12 @@ func finish(r: ref RunState, tail: string) -> void
     end
     r.text = r.text + tail
     io.close(r.out)
-    sys.exec("rm -rf " + shell_quote(r.dir))
+    // no Windows o cmd pode ainda estar fechando dir/code: uma segunda
+    // tentativa logo depois basta
+    if !platform.rmtree(r.dir) then
+        sys.sleep(50)
+        platform.rmtree(r.dir)
+    end
     r.running = false
     r.stopping = false
     r.version = r.version + 1
@@ -114,7 +186,7 @@ func poll(r: ref RunState, now: int) -> void
         if !group_alive(r.pid) then
             finish(r, "[interrompido]")
         elif now - r.stop_at >= KILL_AFTER_MS then
-            sys.exec("kill -KILL -" + to_str(r.pid) + " 2>/dev/null")
+            kill_group(r.pid, true)
         end
         return
     end
@@ -135,7 +207,7 @@ func stop(r: ref RunState, now: int) -> string
     if !r.running then
         return "nada rodando"
     end
-    sys.exec("kill -TERM -" + to_str(r.pid) + " 2>/dev/null")
+    kill_group(r.pid, false)
     r.stopping = true
     r.stop_at = now
     r.version = r.version + 1

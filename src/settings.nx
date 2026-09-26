@@ -1,10 +1,12 @@
 // src/settings.nx — as configuracoes do editor em
-// ~/.config/noxy-editor/settings.json (XDG_CONFIG_HOME quando definido;
-// NOXY_EDITOR_CONFIG_DIR sobrepoe os dois, para os testes). Arquivo
-// ausente ou invalido da o padrao; a proxima mudanca regrava.
+// <config>/noxy-editor/settings.json, onde <config> e ~/.config
+// (XDG_CONFIG_HOME quando definido) ou, no Windows, APPDATA
+// (platform.config_home); NOXY_EDITOR_CONFIG_DIR sobrepoe, para os testes.
+// Arquivo ausente ou invalido da o padrao; a proxima mudanca regrava.
 use sys
 use io
 use strings select trim
+use src.platform as platform
 
 struct Settings
     theme: string      // um de THEMES
@@ -21,11 +23,7 @@ func config_dir() -> string
     if o.ok && o.value != "" then
         return o.value
     end
-    let x: sys.EnvResult = sys.getenv("XDG_CONFIG_HOME")
-    if x.ok && x.value != "" then
-        return x.value + "/noxy-editor"
-    end
-    return sys.getenv("HOME").value + "/.config/noxy-editor"
+    return platform.config_home() + "/noxy-editor"
 end
 
 func path() -> string

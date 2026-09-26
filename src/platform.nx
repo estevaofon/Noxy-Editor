@@ -1,0 +1,200 @@
+// src/platform.nx — o que muda entre Linux/macOS e Windows: separador de
+// caminho, diretorios do usuario (XDG, LOCALAPPDATA, APPDATA), temporarios
+// e como passar um argumento ao shell do sys.exec. O editor usa "/" por
+// dentro em todas as plataformas (o Go aceita "/" no Windows); o que vem de
+// fora (argv, getcwd, variaveis de ambiente) passa por slashes.
+//
+// No Windows o sys.exec roda `cmd /C <comando>` e o Go escapa cada aspa do
+// comando como \", que o cmd repassa ao programa: qualquer argumento entre
+// aspas chega quebrado (docs/ACHADOS.md, achado 10). arg contorna: o valor
+// vai, ja entre aspas, numa variavel de ambiente que o cmd herda, e o
+// comando recebe %NOME%, que o cmd expande antes de tratar as aspas.
+use sys
+use io
+use uuid
+use strings select replace, starts_with, ends_with, substring, trim, codes
+
+func windows() -> bool
+    return sys.os() == "windows"
+end
+
+func slashes(path: string) -> string
+    return replace(path, "\\", "/")
+end
+
+func backslashes(path: string) -> string
+    return replace(path, "/", "\\")
+end
+
+// is_absolute: comeca com barra, ou com letra de unidade ("C:", "c:\x").
+func is_absolute(path: string) -> bool
+    if starts_with(path, "/") || starts_with(path, "\\") then
+        return true
+    end
+    if length(path) < 2 || substring(path, 1, 2) != ":" then
+        return false
+    end
+    let cs: int[] = codes(substring(path, 0, 1))
+    let c: int = cs[0]
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
+end
+
+func cwd() -> string
+    return slashes(sys.getcwd())
+end
+
+// strip_slash tira a barra final, menos de "/" e de "C:/".
+func strip_slash(path: string) -> string
+    if length(path) > 1 && ends_with(path, "/") && !ends_with(path, ":/") then
+        return substring(path, 0, length(path) - 1)
+    end
+    return path
+end
+
+// absolute resolve path contra o cwd e normaliza: barras "/", sem barra final.
+func absolute(path: string) -> string
+    let p: string = slashes(path)
+    if is_absolute(p) then
+        return strip_slash(p)
+    end
+    if p == "." || p == "" then
+        return cwd()
+    end
+    if starts_with(p, "./") then
+        p = substring(p, 2, length(p))
+    end
+    return strip_slash(cwd() + "/" + p)
+end
+
+// env e o valor da variavel, "" quando nao existe.
+func env(name: string) -> string
+    let e: sys.EnvResult = sys.getenv(name)
+    if e.ok then
+        return e.value
+    end
+    return ""
+end
+
+func home() -> string
+    if windows() then
+        let u: string = env("USERPROFILE")
+        if u != "" then
+            return slashes(u)
+        end
+    end
+    return slashes(env("HOME"))
+end
+
+// cache_home: XDG_CACHE_HOME; no Windows LOCALAPPDATA; senao ~/.cache.
+func cache_home() -> string
+    let x: string = env("XDG_CACHE_HOME")
+    if x != "" then
+        return slashes(x)
+    end
+    if windows() then
+        let l: string = env("LOCALAPPDATA")
+        if l != "" then
+            return slashes(l)
+        end
+        return home() + "/AppData/Local"
+    end
+    return home() + "/.cache"
+end
+
+// config_home: XDG_CONFIG_HOME; no Windows APPDATA; senao ~/.config.
+func config_home() -> string
+    let x: string = env("XDG_CONFIG_HOME")
+    if x != "" then
+        return slashes(x)
+    end
+    if windows() then
+        let a: string = env("APPDATA")
+        if a != "" then
+            return slashes(a)
+        end
+        return home() + "/AppData/Roaming"
+    end
+    return home() + "/.config"
+end
+
+// temp_dir: TEMP ou TMP no Windows (senao LOCALAPPDATA/Temp); TMPDIR ou /tmp.
+func temp_dir() -> string
+    if windows() then
+        for name in ["TEMP", "TMP"] do
+            let t: string = env(name)
+            if t != "" then
+                return strip_slash(slashes(t))
+            end
+        end
+        return cache_home() + "/Temp"
+    end
+    let tmpdir: string = env("TMPDIR")
+    if tmpdir != "" then
+        return strip_slash(tmpdir)
+    end
+    return "/tmp"
+end
+
+// make_temp_dir cria um diretorio temporario novo; "" se nao conseguiu. No
+// Unix e o mktemp -d (modo 0700: a pagina de redirecionamento leva o token);
+// no Windows um nome unico dentro do TEMP do usuario, que ja e so dele.
+func make_temp_dir() -> string
+    if windows() then
+        let w: string = temp_dir() + "/noxy-editor-" + uuid.uuid4()
+        if !io.mkdir(w) then
+            return ""
+        end
+        return w
+    end
+    let r: sys.SysResult = sys.exec_output("mktemp -d")
+    let d: string = trim(r.output)
+    if !r.ok || !starts_with(d, "/") then
+        return ""
+    end
+    return d
+end
+
+// rmtree apaga path com tudo dentro; true se no fim ele nao existe. Segue
+// links simbolicos (io.stat segue): so para diretorios que o editor criou.
+func rmtree(path: string) -> bool
+    let st: io.FileInfo = io.stat(path)
+    if !st.exists then
+        return true
+    end
+    if st.is_dir then
+        let r: io.IOLinesResult = io.list_dir(path)
+        if r.ok then
+            for name in r.data do
+                rmtree(path + "/" + name)
+            end
+        end
+    end
+    io.remove(path)
+    return !io.exists(path)
+end
+
+// shell_quote cita para o sh: aspas simples, com ' virando '\''.
+func shell_quote(s: string) -> string
+    return "'" + replace(s, "'", "'\\''") + "'"
+end
+
+// arg devolve o que vai no comando do sys.exec para o shell entregar value
+// inteiro ao programa. No sh e shell_quote(value); no cmd o valor vai entre
+// aspas na variavel de ambiente name e o comando recebe %name%. Cada uso
+// tem um nome proprio (NOXY_EDITOR_...), porque tasks concorrentes
+// compartilham o ambiente do processo.
+func arg(name: string, value: string) -> string
+    if windows() then
+        sys.setenv(name, "\"" + value + "\"")
+        return "%" + name + "%"
+    end
+    return shell_quote(value)
+end
+
+// quiet descarta o stderr de um comando.
+func quiet() -> string
+    if windows() then
+        return " 2>nul"
+    end
+    return " 2>/dev/null"
+end

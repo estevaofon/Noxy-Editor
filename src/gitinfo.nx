@@ -6,6 +6,7 @@
 use sys
 use strings select substring, split, starts_with, trim, join_count
 use strings
+use src.platform as platform
 
 struct Parsed
     status: map[string, string]   // caminho absoluto -> "M", "A", "D", "R", "?"
@@ -24,10 +25,6 @@ func empty_git() -> GitInfo
     let st: map[string, string] = {}
     let ds: map[string, bool] = {}
     return GitInfo(false, "", st, ds, 0)
-end
-
-func shell_quote(s: string) -> string
-    return "'" + strings.replace(s, "'", "'\\''") + "'"
 end
 
 func code_of(x: string, y: string) -> string
@@ -56,10 +53,11 @@ end
 
 // parse le o status --porcelain (v1) de um repositorio; prefix e o caminho
 // da raiz aberta dentro do repositorio ("" na raiz dele), root o absoluto.
+// Linhas com \r\n (o cmd do Windows) valem como \n.
 func parse(porcelain: string, prefix: string, root: string) -> Parsed
     let st: map[string, string] = {}
     let ds: map[string, bool] = {}
-    for line in split(porcelain, "\n").parts do
+    for line in split(strings.replace(porcelain, "\r", ""), "\n").parts do
         if length(line) < 4 then
             continue
         end
@@ -84,18 +82,26 @@ func parse(porcelain: string, prefix: string, root: string) -> Parsed
     return Parsed(st, ds)
 end
 
+// collect roda o git na raiz. O caminho vai por platform.arg (aspas simples
+// no sh; variavel de ambiente no cmd) e o stderr e descartado na sintaxe do
+// shell da plataforma.
 func collect(root: string) -> GitInfo
     let g: GitInfo = empty_git()
-    let q: string = shell_quote(root)
-    let b: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --abbrev-ref HEAD 2>/dev/null")
+    let q: string = platform.arg("NOXY_EDITOR_GIT_ROOT", root)
+    let quiet: string = platform.quiet()
+    let b: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --abbrev-ref HEAD" + quiet)
     if !b.ok || b.exit_code != 0 then
         return g
     end
-    let pre: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --show-prefix 2>/dev/null")
+    let pre: sys.SysResult = sys.exec_output("git -C " + q + " rev-parse --show-prefix" + quiet)
     // exec_output apara espacos nas pontas da saida (docs/ACHADOS.md), e o
     // porcelain comeca com espaco (" M a.nx"): uma linha "#" na frente protege
     // core.quotePath=false: sem ele o git escreve acentos em octal ("caf\303\251.nx")
-    let st: sys.SysResult = sys.exec_output("echo '#'; git -C " + q + " -c core.quotePath=false status --porcelain --untracked-files=all 2>/dev/null")
+    let mark: string = "echo '#'; "
+    if platform.windows() then
+        mark = "echo #& "
+    end
+    let st: sys.SysResult = sys.exec_output(mark + "git -C " + q + " -c core.quotePath=false status --porcelain --untracked-files=all" + quiet)
     if !st.ok || st.exit_code != 0 then
         return g
     end

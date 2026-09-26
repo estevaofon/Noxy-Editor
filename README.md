@@ -11,7 +11,8 @@ da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.m
     noxy editor.nx [pasta | arquivo]
 
 Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
-arquivo numa aba. A janela é a extensão
+arquivo numa aba. Roda no Linux, no macOS e no Windows (`noxy editor.nx
+C:\projeto`; por dentro o editor usa `/` em todas as plataformas). A janela é a extensão
 [noxy_webview](https://github.com/estevaofon/noxy_webview), instalada com
 `noxy --sync` (veja "Extensão de janela"); se ela não conseguir abrir a
 janela nesta máquina, o editor abre num navegador em modo app (Chrome,
@@ -92,13 +93,15 @@ rola. O painel inferior tem as abas Saída, Busca e Terminal; arraste a barra
 dele (fora das abas) ou o divisor acima para redimensionar.
 
 **Alterações não salvas não se perdem.** Cada aba suja tem uma cópia em
-`~/.cache/noxy-editor/recovery/`, gravada no máximo uma vez por segundo e
+`~/.cache/noxy-editor/recovery/` (`%LOCALAPPDATA%\noxy-editor\recovery\` no
+Windows), gravada no máximo uma vez por segundo e
 1,5 s depois da última tecla. Fechar pelo X, uma queda do editor ou da
 máquina: na próxima vez que a pasta for aberta, as abas voltam sujas, com o
 texto. Salvar ou fechar sem salvar apaga a cópia.
 
 **Temas**: Escuro, Claro, Dracula, Nord e Monokai, pela paleta ("Tema: ...").
-A escolha fica em `~/.config/noxy-editor/settings.json`.
+A escolha fica em `~/.config/noxy-editor/settings.json`
+(`%APPDATA%\noxy-editor\settings.json` no Windows).
 
 **Git**: se a pasta está num repositório, a branch aparece na barra de
 status e os arquivos modificados (âmbar), novos (verde) e apagados (riscados)
@@ -131,6 +134,7 @@ empacota o evento com um canal de resposta; o dono aplica e responde o quadro.
 | `src/term` | o terminal sobre a extensão `noxy_pty` |
 | `src/session` | raiz, abas, árvore, painel, lista, modal, abrir, salvar, fechar |
 | `src/runner` | roda o arquivo em segundo plano, saída ao vivo, Parar |
+| `src/platform` | o que muda por plataforma: caminhos, diretórios do usuário, temporários, argumentos para o shell do `sys.exec` |
 | `src/frame` | o quadro JSON com as linhas visíveis tokenizadas |
 | `src/events` | do JSON do evento ao efeito na sessão, dentro de `call_result` |
 | `src/server` | rotas, token, a ponte com o dono do estado e as rotas `/term` |
@@ -146,14 +150,22 @@ Design e plano em `docs/superpowers/`.
     python3 tests/web_smoke.py   # o cliente web num Chrome headless (precisa de google-chrome)
     GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout, arraste do painel e terminal no WebKitGTK real (PyGObject; abre uma janela)
 
-A CI (`.github/workflows/ci.yml`) roda as duas suítes Noxy no Ubuntu. Os
-testes usam cache e configuração próprios em `tests/tmp`, nunca os seus.
+A CI (`.github/workflows/ci.yml`) roda as duas suítes Noxy no Ubuntu e no
+Windows. Os testes usam cache e configuração próprios em `tests/tmp`, nunca
+os seus. No Windows a parte do terminal confere só a recusa da `noxy_pty`.
 
 `tests/MANUAL.md` lista o que só se confere à mão.
 
 ## Limitações
 
 Busca sem regex; um terminal por vez; git só para ver (commit, pull e push
-pelo terminal); o programa executado recebe `/dev/null` como entrada (para
-programas interativos, use o terminal). Testado no Linux; no Windows o
-terminal e o Parar ainda não funcionam.
+pelo terminal); o programa executado recebe `/dev/null` (`nul` no Windows)
+como entrada (para programas interativos, use o terminal).
+
+No Windows: o terminal não abre (a `noxy_pty` ainda não tem ConPTY; Ctrl+`
+mostra a recusa na barra de status); o F5 demora cerca de um segundo a mais
+para começar, porque o PowerShell lança o programa numa janela oculta; Parar
+mata a árvore de processos na hora (`taskkill /T /F`), sem os 2 s de TERM do
+Linux; e a raiz ou o arquivo com `%` ou `!` no nome quebram o F5 e o git (o
+`cmd` expande esses caracteres). O Linux e o macOS usam `sh`; o Windows usa
+`cmd` e PowerShell, sem depender de Git Bash ou WSL.

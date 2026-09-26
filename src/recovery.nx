@@ -1,12 +1,14 @@
 // src/recovery.nx — copias de recuperacao das abas com alteracoes nao
-// salvas, em ~/.cache/noxy-editor/recovery/<sha256 do caminho>.json
-// (XDG_CACHE_HOME quando definido; NOXY_EDITOR_CACHE_DIR sobrepoe, para os
-// testes). Cobrem fechar pelo X e queda do editor: a partida seguinte
+// salvas, em <cache>/noxy-editor/recovery/<sha256 do caminho>.json, onde
+// <cache> e ~/.cache (XDG_CACHE_HOME quando definido) ou, no Windows,
+// LOCALAPPDATA (platform.cache_home); NOXY_EDITOR_CACHE_DIR sobrepoe, para
+// os testes. Cobrem fechar pelo X e queda do editor: a partida seguinte
 // reabre as abas (session.restore).
 use sys
 use io
 use crypto
 use strings select ends_with
+use src.platform as platform
 
 struct Copy
     path: string
@@ -20,11 +22,7 @@ func cache_dir() -> string
     if o.ok && o.value != "" then
         return o.value
     end
-    let x: sys.EnvResult = sys.getenv("XDG_CACHE_HOME")
-    if x.ok && x.value != "" then
-        return x.value + "/noxy-editor"
-    end
-    return sys.getenv("HOME").value + "/.cache/noxy-editor"
+    return platform.cache_home() + "/noxy-editor"
 end
 
 func dir() -> string
