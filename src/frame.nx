@@ -1,0 +1,178 @@
+// src/frame.nx — monta o quadro que o navegador pinta. So as linhas
+// visiveis sao tokenizadas; spans sao cortados na fronteira da selecao e
+// marcados com s, para o cliente nao fazer aritmetica de colunas. A arvore
+// so vai quando a versao do cliente e outra. O clipboard e consumido.
+use strings select substring
+use src.document as doc
+use src.lexer as lexer
+use src.editing as editing
+use src.session as session
+
+struct SpanOut
+    k: string       // kind do token
+    t: string       // texto exato
+    s: bool         // dentro da selecao
+end
+
+struct LineOut
+    n: int          // indice 0-based; o gutter mostra n + 1
+    spans: SpanOut[]
+end
+
+struct CursorOut
+    line: int
+    col: int
+end
+
+struct ViewOut
+    top: int
+    total: int
+    cursor: CursorOut
+    has_sel: bool
+    lines: LineOut[]
+end
+
+struct TabOut
+    name: string
+    path: string
+    dirty: bool
+    active: bool
+end
+
+struct StatusOut
+    left: string
+    right: string
+    message: string
+end
+
+struct OutputOut
+    version: int
+    running: bool
+    text: string
+end
+
+struct Frame
+    title: string
+    root: string
+    tabs: TabOut[]
+    tree_version: int
+    tree: session.Node[]
+    view: ViewOut
+    status: StatusOut
+    output: OutputOut
+    clipboard: string
+    modal: session.Modal
+end
+
+// cut_span corta um token que comeca na coluna col em ate tres pedacos na
+// fronteira [a, b) da selecao dentro da linha.
+func cut_span(kind: string, text: string, col: int, a: int, b: int) -> SpanOut[]
+    let n: int = length(text)
+    let lo: int = a - col
+    let hi: int = b - col
+    if lo < 0 then
+        lo = 0
+    end
+    if hi > n then
+        hi = n
+    end
+    if hi <= lo then
+        return [SpanOut(kind, text, false)]
+    end
+    let out: SpanOut[] = []
+    if lo > 0 then
+        append(ref out, SpanOut(kind, substring(text, 0, lo), false))
+    end
+    append(ref out, SpanOut(kind, substring(text, lo, hi), true))
+    if hi < n then
+        append(ref out, SpanOut(kind, substring(text, hi, n), false))
+    end
+    return out
+end
+
+func build_line(ed: editing.Editor, n: int) -> LineOut
+    let line: string = ed.doc.lines[n]
+    let a: int = 0
+    let b: int = 0
+    if editing.has_sel(ed) then
+        let r: doc.Range = editing.sel_range(ed)
+        if n >= r.start.line && n <= r.stop.line then
+            if n == r.start.line then
+                a = r.start.col
+            end
+            b = length(line)
+            if n == r.stop.line then
+                b = r.stop.col
+            end
+        end
+    end
+    let spans: SpanOut[] = []
+    let col: int = 0
+    for t in lexer.tokenize(line) do
+        for sp in cut_span(t.kind, t.text, col, a, b) do
+            append(ref spans, sp)
+        end
+        col = col + length(t.text)
+    end
+    return LineOut(n, spans)
+end
+
+func build_view(ed: editing.Editor, rows: int) -> ViewOut
+    let total: int = length(ed.doc.lines)
+    let stop: int = ed.top + rows
+    if stop > total then
+        stop = total
+    end
+    let lines: LineOut[] = []
+    for n in range(ed.top, stop) do
+        append(ref lines, build_line(ed, n))
+    end
+    return ViewOut(ed.top, total, CursorOut(ed.cursor.line, ed.cursor.col), editing.has_sel(ed), lines)
+end
+
+func empty_view() -> ViewOut
+    return ViewOut(0, 0, CursorOut(0, 0), false, [])
+end
+
+// title_of e o titulo da janela: nome da aba ativa, marcador de alteracao
+// e o nome do editor. editor.nx compara com o anterior para set_title.
+func title_of(s: ref session.Session) -> string
+    if s.active < 0 then
+        return "Noxy Editor"
+    end
+    let d: doc.Document = s.tabs[s.active].editor.doc
+    let mark: string = ""
+    if d.dirty then
+        mark = " ●"
+    end
+    return session.basename(d.path) + mark + " — Noxy Editor"
+end
+
+func build(s: ref session.Session, client_tree_version: int) -> string
+    let tabs: TabOut[] = []
+    for i in range(length(s.tabs)) do
+        let d: doc.Document = s.tabs[i].editor.doc
+        append(ref tabs, TabOut(session.basename(d.path), d.path, d.dirty, i == s.active))
+    end
+    let tree: session.Node[] = []
+    if client_tree_version != s.tree_version then
+        tree = s.tree
+    end
+    let view: ViewOut = empty_view()
+    let title: string = title_of(s)
+    let left: string = ""
+    let right: string = ""
+    if s.active >= 0 then
+        let ed: editing.Editor = s.tabs[s.active].editor
+        view = build_view(ed, s.rows)
+        let mark: string = ""
+        if ed.doc.dirty then
+            mark = " ●"
+        end
+        left = session.relative(s.root, ed.doc.path) + mark
+        right = "Ln " + to_str(ed.cursor.line + 1) + ", Col " + to_str(ed.cursor.col + 1) + "   Espaços: 4   UTF-8"
+    end
+    let f: Frame = Frame(title, session.basename(s.root), tabs, s.tree_version, tree, view, StatusOut(left, right, s.message), OutputOut(s.run.version, s.run.running, s.run.text), s.clipboard, s.modal)
+    s.clipboard = ""
+    return json_dumps(f)
+end

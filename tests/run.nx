@@ -9,6 +9,7 @@ use src.editing as editing
 use src.runner as runner
 use strings
 use src.session as session
+use src.frame as frame
 
 let fails = 0
 let total = 0
@@ -416,6 +417,51 @@ func test_session() -> void
     check("relative e basename", session.relative(root, root + "/sub/c.nx") == "sub/c.nx" && session.basename("/a/b.nx") == "b.nx" && session.dirname("/a/b.nx") == "/a" && session.dirname("b.nx") == ".")
 end
 
+func test_frame() -> void
+    print("frame")
+    let root: string = tmp_root()
+    let s: session.Session = session.new_session(root)
+    session.load(ref s)
+    s.rows = 2
+    let empty: string = frame.build(ref s, 0)
+    check("sem aba: tabs vazio e arvore presente", strings.contains(empty, "\"tabs\":[]") && strings.contains(empty, "\"name\":\"b.nx\"") && strings.contains(empty, "\"title\":\"Noxy Editor\""))
+    let same: string = frame.build(ref s, s.tree_version)
+    check("arvore omitida quando a versao bate", strings.contains(same, "\"tree\":[]"))
+
+    session.open_file(ref s, root + "/b.nx")
+    editing.move_end(ref s.tabs[0].editor, false, 2)
+    editing.insert_text(ref s.tabs[0].editor, "\n", 2, 1)
+    editing.insert_text(ref s.tabs[0].editor, "x", 2, 2)
+    editing.click(ref s.tabs[0].editor, doc.Pos(0, 1), false, 2)
+    editing.drag(ref s.tabs[0].editor, doc.Pos(1, 1), 2)
+    s.clipboard = "cp"
+    let f: string = frame.build(ref s, s.tree_version)
+    check("spans cortados na fronteira da selecao", strings.contains(f, "{\"k\":\"keyword\",\"s\":false,\"t\":\"l\"}") && strings.contains(f, "{\"k\":\"keyword\",\"s\":true,\"t\":\"et\"}") && strings.contains(f, "{\"k\":\"ident\",\"s\":true,\"t\":\"x\"}"))
+    check("cursor, has_sel e total", strings.contains(f, "\"cursor\":{\"col\":1,\"line\":1}") && strings.contains(f, "\"has_sel\":true") && strings.contains(f, "\"total\":3"))
+    check("aba suja e titulo", strings.contains(f, "\"dirty\":true") && strings.contains(f, "b.nx ● — Noxy Editor"))
+    check("status", strings.contains(f, "\"left\":\"b.nx ●\"") && strings.contains(f, "Ln 2, Col 2"))
+    check("clipboard vai e e consumido", strings.contains(f, "\"clipboard\":\"cp\"") && s.clipboard == "")
+    s.rows = 1
+    editing.ensure_visible(ref s.tabs[0].editor, 1)
+    let one: string = frame.build(ref s, s.tree_version)
+    check("so as linhas visiveis", strings.contains(one, "\"n\":1") && !strings.contains(one, "\"n\":0") && !strings.contains(one, "\"n\":2"))
+    check("title_of", frame.title_of(ref s) == "b.nx ● — Noxy Editor")
+
+    let big: string[] = []
+    for i in range(5000) do
+        append(ref big, "let v" + to_str(i) + ": int = " + to_str(i) + " // linha")
+    end
+    let bs: session.Session = session.new_session(root)
+    append(ref bs.tabs, session.Tab(editing.new_editor(doc.Document(root + "/big.nx", big, false))))
+    bs.active = 0
+    bs.rows = 50
+    editing.move_doc_end(ref bs.tabs[0].editor, false, 50)
+    let t0: int = time_now()
+    let bf: string = frame.build(ref bs, 1)
+    let dt: int = time_now() - t0
+    check("arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms", strings.contains(bf, "\"total\":5000") && !strings.contains(bf, "\"n\":100,") && dt < 200)
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -423,4 +469,5 @@ test_editing_moves()
 test_editing_text()
 test_runner()
 test_session()
+test_frame()
 report()
