@@ -38,7 +38,9 @@ func test_document() -> void
     print("document")
     let d: doc.Document = doc.from_text("x.nx", "ab\r\ncd\n")
     check("from_text normaliza CRLF e mantem a linha final vazia", length(d.lines) == 3 && d.lines[0] == "ab" && d.lines[1] == "cd" && d.lines[2] == "")
-    check("to_text devolve LF", doc.to_text(d) == "ab\ncd\n")
+    check("to_text preserva CRLF quando o arquivo tinha", d.eol == "\r\n" && doc.to_text(d) == "ab\r\ncd\r\n")
+    let lf: doc.Document = doc.from_text("y.nx", "ab\ncd")
+    check("arquivo LF continua LF", lf.eol == "\n" && doc.to_text(lf) == "ab\ncd")
     let e: doc.Document = doc.from_text("", "")
     check("documento vazio tem uma linha", length(e.lines) == 1 && e.lines[0] == "")
 
@@ -444,7 +446,7 @@ func test_frame() -> void
     check("spans cortados na fronteira da selecao", strings.contains(f, "{\"k\":\"keyword\",\"s\":false,\"t\":\"l\"}") && strings.contains(f, "{\"k\":\"keyword\",\"s\":true,\"t\":\"et\"}") && strings.contains(f, "{\"k\":\"ident\",\"s\":true,\"t\":\"x\"}"))
     check("cursor, has_sel e total", strings.contains(f, "\"cursor\":{\"col\":1,\"line\":1}") && strings.contains(f, "\"has_sel\":true") && strings.contains(f, "\"total\":3"))
     check("aba suja e titulo", strings.contains(f, "\"dirty\":true") && strings.contains(f, "b.nx ● — Noxy Editor"))
-    check("status", strings.contains(f, "\"left\":\"b.nx ●\"") && strings.contains(f, "Ln 2, Col 2"))
+    check("status", strings.contains(f, "\"left\":\"b.nx ●\"") && strings.contains(f, "Ln 2, Col 2") && strings.contains(f, "\"eol\":\"LF\""))
     check("clipboard vai e e consumido", strings.contains(f, "\"clipboard\":\"cp\"") && s.clipboard == "")
     s.rows = 1
     editing.ensure_visible(ref s.tabs[0].editor, 1)
