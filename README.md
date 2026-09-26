@@ -52,6 +52,14 @@ ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
 
 A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
 
+## Extensão de terminal
+
+O terminal (Ctrl+`) é o package [`noxy_pty`](https://github.com/estevaofon/noxy_pty),
+importado em `src/term.nx` e instalado pelo mesmo `noxy --sync`. É Go puro,
+sem dependências de sistema. No Windows o binário existe, para o editor
+compilar, mas abrir um terminal responde "terminal indisponível no Windows
+nesta versão".
+
 ## Atalhos
 
 | Tecla | Ação |
@@ -67,14 +75,38 @@ A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
 | Ctrl+/ | comentar ou descomentar |
 | Tab, Shift+Tab | indentar, desindentar (quatro espaços) |
 | Enter | nova linha com a indentação da atual |
-| Escape | fechar o modal; senão colapsar a seleção |
-| F5 | salvar e rodar o arquivo ativo (`noxy arquivo.nx`), saída no painel |
-| Ctrl+J | mostrar ou ocultar o painel inferior (arraste a barra do painel, fora das abas, ou o divisor acima dela para redimensionar) |
+| F5 | salvar e rodar o arquivo ativo, com a saída ao vivo no painel |
+| Ctrl+F5 | parar o programa (também o botão Parar do painel) |
+| Ctrl+F, Ctrl+H | buscar, substituir no arquivo (F3 e Shift+F3 navegam) |
+| Ctrl+Shift+F | buscar na pasta |
+| Ctrl+P | abrir arquivo pelo nome |
+| Ctrl+Shift+P | paleta de comandos (inclui os temas) |
+| Ctrl+J | mostrar ou ocultar o painel inferior |
+| Ctrl+` | terminal; com o terminal focado, volta ao editor |
+| Escape | fecha lista, barra de busca ou modal; senão colapsa a seleção (no terminal, vai para o shell) |
 | Ctrl+Q | sair (pergunta se há abas com alterações) |
 
 Mouse: clique posiciona, arraste seleciona, duplo clique seleciona a palavra,
-clique no gutter seleciona a linha, roda rola. Fechar a janela pelo X encerra
-sem perguntar: alterações não salvas se perdem (use Ctrl+Q).
+clique no gutter seleciona a linha, roda rola, clique ou arraste no minimap
+rola. O painel inferior tem as abas Saída, Busca e Terminal; arraste a barra
+dele (fora das abas) ou o divisor acima para redimensionar.
+
+**Alterações não salvas não se perdem.** Cada aba suja tem uma cópia em
+`~/.cache/noxy-editor/recovery/`, gravada no máximo uma vez por segundo e
+1,5 s depois da última tecla. Fechar pelo X, uma queda do editor ou da
+máquina: na próxima vez que a pasta for aberta, as abas voltam sujas, com o
+texto. Salvar ou fechar sem salvar apaga a cópia.
+
+**Temas**: Escuro, Claro, Dracula, Nord e Monokai, pela paleta ("Tema: ...").
+A escolha fica em `~/.config/noxy-editor/settings.json`.
+
+**Git**: se a pasta está num repositório, a branch aparece na barra de
+status e os arquivos modificados (âmbar), novos (verde) e apagados (riscados)
+ficam marcados na árvore e nas abas; atualiza ao salvar, ao fim de uma
+execução e pelo comando "Git: atualizar".
+
+Arquivos com `\r\n` continuam com `\r\n` ao salvar; a barra de status
+mostra LF ou CRLF.
 
 ## Como está organizado
 
@@ -84,17 +116,26 @@ empacota o evento com um canal de resposta; o dono aplica e responde o quadro.
 
 | Módulo | Responsabilidade |
 |---|---|
-| `src/document` | linhas de texto e posições em code points; inserir, apagar, trechos |
+| `src/document` | linhas de texto, posições em code points, a quebra de linha do arquivo |
 | `src/lexer` | tokenizador de Noxy, uma linha por vez |
 | `src/history` | undo e redo por snapshot (copy-on-write faz a cópia ser rasa) |
 | `src/editing` | cursor, seleção, scroll e as operações de edição de uma aba |
-| `src/session` | raiz, abas, árvore, modal, abrir, salvar, fechar |
-| `src/runner` | roda o arquivo numa task e recolhe a saída |
+| `src/find` | busca e substituição no arquivo |
+| `src/search` | busca na pasta, numa task |
+| `src/index` | índice de arquivos e o filtro difuso do Ctrl+P |
+| `src/commands` | os comandos da paleta |
+| `src/settings` | `settings.json` |
+| `src/recovery` | cópias de recuperação das abas sujas |
+| `src/gitinfo` | branch e status do git, numa task |
+| `src/minimap` | o formato do arquivo para o minimap |
+| `src/term` | o terminal sobre a extensão `noxy_pty` |
+| `src/session` | raiz, abas, árvore, painel, lista, modal, abrir, salvar, fechar |
+| `src/runner` | roda o arquivo em segundo plano, saída ao vivo, Parar |
 | `src/frame` | o quadro JSON com as linhas visíveis tokenizadas |
 | `src/events` | do JSON do evento ao efeito na sessão, dentro de `call_result` |
-| `src/server` | rotas, token e a ponte com o dono do estado |
-| `src/launch` | janela pela extensão, fallback navegador |
-| `web/` | o cliente: `index.html`, `editor.css`, `editor.js` |
+| `src/server` | rotas, token, a ponte com o dono do estado e as rotas `/term` |
+| `src/launch`, `src/browser` | janela pela extensão, fallback navegador |
+| `web/` | o cliente: `index.html`, `editor.css`, `editor.js`; `web/vendor/` tem o xterm.js |
 
 Design e plano em `docs/superpowers/`.
 
@@ -103,12 +144,16 @@ Design e plano em `docs/superpowers/`.
     noxy tests/run.nx            # o núcleo inteiro, sem navegador
     noxy tests/protocol.nx       # servidor + cliente HTTP in-process
     python3 tests/web_smoke.py   # o cliente web num Chrome headless (precisa de google-chrome)
-    GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout e arraste do painel no WebKitGTK real (PyGObject; abre uma janela)
+    GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout, arraste do painel e terminal no WebKitGTK real (PyGObject; abre uma janela)
+
+A CI (`.github/workflows/ci.yml`) roda as duas suítes Noxy no Ubuntu. Os
+testes usam cache e configuração próprios em `tests/tmp`, nunca os seus.
 
 `tests/MANUAL.md` lista o que só se confere à mão.
 
-## Limitações da v1
+## Limitações
 
-Sem busca, paleta de comandos, temas, git, terminal ou minimap. Um programa
-que não termina não pode ser interrompido. Fechar pelo X perde alterações não
-salvas. Arquivos com `\r\n` são salvos com `\n`. Testado no Linux.
+Busca sem regex; um terminal por vez; git só para ver (commit, pull e push
+pelo terminal); o programa executado recebe `/dev/null` como entrada (para
+programas interativos, use o terminal). Testado no Linux; no Windows o
+terminal e o Parar ainda não funcionam.

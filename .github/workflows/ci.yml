@@ -1,0 +1,21 @@
+# CI do editor: as suites Noxy no Ubuntu. Os smokes de navegador (Chrome e
+# WebKitGTK) ficam fora: precisam de janela e de navegador instalados.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  noxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.25.1
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: noxy --sync --locked
+      - run: noxy tests/run.nx
+      - run: noxy tests/protocol.nx

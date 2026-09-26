@@ -8,10 +8,14 @@ no código, como contornei, sugestão. Entradas novas vão no fim.
 
 **Onde:** `src/runner.nx`. **O que:** `sys.exec_output` bloqueia até o
 programa terminar e não devolve handle; um programa que não termina (servidor,
-jogo) fica rodando até o editor sair. **Contorno:** F5 durante uma execução
-responde "já está rodando"; o editor continua utilizável porque a execução é
-uma `spawn_task`. **Sugestão:** `sys.spawn_process(cmd) -> Process` com
-`kill`, `wait` e leitura incremental da saída.
+jogo) fica rodando até o editor sair, e a saída só aparece no fim.
+**Contorno (v1.1):** o shell faz o trabalho: `setsid sh -c '...' & echo $!`
+dá o PID do líder de um grupo de processos próprio, a saída vai para um
+arquivo lido aos pedaços a cada evento (`io.read_bytes` num handle aberto
+devolve só o que chegou), um arquivo `code` marca o fim, e Parar é
+`kill -TERM -PGID` (no `sh` do Ubuntu, o dash, sem `--`). **Sugestão:**
+`sys.spawn_process(cmd) -> Process` com `kill`, `wait` e leitura não
+bloqueante da saída.
 
 ## 2. `time_now()` não tem tipo de retorno estático
 
