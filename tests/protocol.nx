@@ -49,6 +49,14 @@ func owner() -> void
     end
 end
 
+func post_to(url: string, tok: string, body: string) -> http_client.ClientResponse
+    let c: http_client.HttpClient = http_client.new_client()
+    let hs: string[64]
+    hs[0] = "X-Noxy-Token: " + tok
+    hs[1] = "Content-Type: application/json"
+    return http_client.request(ref c, "POST", url, hs, 2, to_bytes(body))
+end
+
 func post(base: string, tok: string, body: string) -> http_client.ClientResponse
     let c: http_client.HttpClient = http_client.new_client()
     let hs: string[64]
@@ -82,6 +90,35 @@ post(base, "segredo", "{\"kind\":\"key\",\"key\":\"end\",\"rows\":10,\"tree_vers
 let typed: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"text\",\"text\":\"0\",\"rows\":10,\"tree_version\":2}")
 let tbody: string = to_str(typed.body)
 check("abrir, end e digitar refletem no quadro", strings.contains(tbody, "\"t\":\"10\"") && strings.contains(tbody, "\"dirty\":true") && strings.contains(tbody, "\"tree\":[]"))
+// terminal: abre pelo /event, escreve e le pelas rotas /term fora do dono
+let to: http_client.ClientResponse = post(base, "segredo", "{\"kind\":\"term_open\",\"cols\":80,\"rows\":24,\"tree_version\":2}")
+let tid: int = s.term.id
+check("term_open pelo /event", to.status_code == 200 && tid > 0)
+let tw: http_client.ClientResponse = post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode("echo ok_$((40+2))\n") + "\"}")
+check("POST /term/write", tw.status_code == 200)
+let term_out: string = ""
+let tn: int = 0
+while !strings.contains(term_out, "ok_42") && tn < 20 do
+    let tr: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":" + to_str(tid) + "}")
+    let rv: any = json_parse(to_str(tr.body))
+    term_out = term_out + to_str(base64_decode(rv["data"]))
+    tn = tn + 1
+end
+check("POST /term/read devolve a saida do shell", strings.contains(term_out, "ok_42"))
+let stale: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":" + to_str(tid + 99) + "}")
+check("id que nao e o atual e 404", stale.status_code == 404)
+let tnok: http_client.ClientResponse = post_to(base + "/term/read", "errado", "{\"id\":" + to_str(tid) + "}")
+check("rota do terminal exige o token", tnok.status_code == 403)
+post_to(base + "/term/write", "segredo", "{\"id\":" + to_str(tid) + ",\"data\":\"" + base64_encode("exit\n") + "\"}")
+let ended: bool = false
+tn = 0
+while !ended && tn < 20 do
+    let tr2: http_client.ClientResponse = post_to(base + "/term/read", "segredo", "{\"id\":" + to_str(tid) + "}")
+    ended = strings.contains(to_str(tr2.body), "\"exited\":true")
+    tn = tn + 1
+end
+check("fim do shell chega como exited", ended)
+
 let beacon: http_client.ClientResponse = http_client.post(base + "/event?t=segredo", to_bytes("{\"kind\":\"quit\",\"rows\":10,\"tree_version\":2}"))
 check("quit com token na query (sendBeacon) e aceito", beacon.status_code == 200)
 let waited: int = 0
