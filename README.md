@@ -1,0 +1,77 @@
+# Noxy Editor
+
+Um editor de código para arquivos Noxy, escrito em
+[Noxy](https://github.com/estevaofon/noxy). Buffer, cursor, seleção, undo,
+lexer, abas, árvore de arquivos e execução vivem no Noxy; o navegador só pinta
+o que o Noxy manda e encaminha teclado e mouse. É um projeto de experimentação
+da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.md).
+
+## Rodar
+
+    noxy editor.nx [pasta | arquivo]
+
+Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
+arquivo numa aba. A janela é a extensão
+[noxy_webview](https://github.com/estevaofon/noxy_webview); se ela não
+estiver disponível, o editor abre num navegador em modo app (Chrome, Chromium,
+Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
+só imprime a URL, para desenvolver o cliente ou rodar o smoke.
+
+## Atalhos
+
+| Tecla | Ação |
+|---|---|
+| Setas, Home, End, PageUp, PageDown | mover; com Shift, selecionar |
+| Ctrl+Setas | por palavra |
+| Ctrl+Home, Ctrl+End | início e fim do documento |
+| Ctrl+A | selecionar tudo |
+| Ctrl+C, Ctrl+X, Ctrl+V | clipboard (linha inteira sem seleção) |
+| Ctrl+Z, Ctrl+Y ou Ctrl+Shift+Z | desfazer, refazer |
+| Ctrl+S | salvar |
+| Ctrl+W | fechar a aba |
+| Ctrl+/ | comentar ou descomentar |
+| Tab, Shift+Tab | indentar, desindentar (quatro espaços) |
+| Enter | nova linha com a indentação da atual |
+| Escape | fechar o modal; senão colapsar a seleção |
+| F5 | salvar e rodar o arquivo ativo (`noxy arquivo.nx`), saída no painel |
+| Ctrl+Q | sair (pergunta se há abas com alterações) |
+
+Mouse: clique posiciona, arraste seleciona, duplo clique seleciona a palavra,
+clique no gutter seleciona a linha, roda rola. Fechar a janela pelo X encerra
+sem perguntar: alterações não salvas se perdem (use Ctrl+Q).
+
+## Como está organizado
+
+A routine principal de `editor.nx` é a dona de todo o estado. O servidor HTTP
+da stdlib (`src/server`) roda cada requisição numa routine própria e só
+empacota o evento com um canal de resposta; o dono aplica e responde o quadro.
+
+| Módulo | Responsabilidade |
+|---|---|
+| `src/document` | linhas de texto e posições em code points; inserir, apagar, trechos |
+| `src/lexer` | tokenizador de Noxy, uma linha por vez |
+| `src/history` | undo e redo por snapshot (copy-on-write faz a cópia ser rasa) |
+| `src/editing` | cursor, seleção, scroll e as operações de edição de uma aba |
+| `src/session` | raiz, abas, árvore, modal, abrir, salvar, fechar |
+| `src/runner` | roda o arquivo numa task e recolhe a saída |
+| `src/frame` | o quadro JSON com as linhas visíveis tokenizadas |
+| `src/events` | do JSON do evento ao efeito na sessão, dentro de `call_result` |
+| `src/server` | rotas, token e a ponte com o dono do estado |
+| `src/launch` | janela pela extensão, fallback navegador |
+| `web/` | o cliente: `index.html`, `editor.css`, `editor.js` |
+
+Design e plano em `docs/superpowers/`.
+
+## Testes
+
+    noxy tests/run.nx            # o núcleo inteiro, sem navegador
+    noxy tests/protocol.nx       # servidor + cliente HTTP in-process
+    python3 tests/web_smoke.py   # o cliente web num Chrome headless (precisa de google-chrome)
+
+`tests/MANUAL.md` lista o que só se confere à mão.
+
+## Limitações da v1
+
+Sem busca, paleta de comandos, temas, git, terminal ou minimap. Um programa
+que não termina não pode ser interrompido. Fechar pelo X perde alterações não
+salvas. Arquivos com `\r\n` são salvos com `\n`. Testado no Linux.

@@ -41,3 +41,17 @@ aviso do compilador quando um `select *` sombreia um builtin.
 listening on ...` em stdout, misturado à saída do editor, sem opção de
 silenciar. **Contorno:** nenhum. **Sugestão:** mover para stderr ou tornar
 opcional.
+
+## 6. Importar um módulo ausente pode derrubar o compilador com panic
+
+**Onde:** `tests/protocol.nx` antes de `src/server.nx` existir (Task 11 do
+plano). **O que:** com `use src.server as server` apontando para um módulo que
+não existe, e o programa usando `server.Request` num struct e `server.inbox`
+numa routine, o `noxy` respondeu `Recovered from panic: runtime error:
+invalid memory address or nil pointer dereference` com stack de
+`internal/compiler/compiler.go` (linhas 2521, 2427, 453, 2414, 1796, 3839),
+em vez do `module not found: src.server` que os outros casos dão.
+**Contorno:** nenhum; criar o módulo. **Sugestão:** o compilador tratar a
+falha de carga do módulo antes de resolver membros qualificados
+(`server.Request` como tipo de campo parece ser o gatilho, diferente de
+`server.x` numa expressão).
