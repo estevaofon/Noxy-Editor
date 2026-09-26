@@ -68,3 +68,16 @@ falhas em tempo de execução (processo que não sobe ou morre). **Contorno:**
 documentar o package como pré-requisito. **Sugestão:** adiar a verificação do
 binário para a primeira chamada, como a documentação descreve, ou oferecer um
 `use ... optional` cujas chamadas falhem em runtime.
+
+## 8. `time_now()` devolve segundos, não milissegundos
+
+**Onde:** `editor.nx` (o relógio do dono do estado) e tudo o que media
+tempo com ele. **O que:** o README do Noxy descreve `time_now()` como
+"timestamp in ms", mas o valor é em segundos (`1790399009` contra
+`1790399009754` de `date +%s%3N`). O editor tratava o valor como ms: o
+agrupamento de digitação do undo, de 1 s, virava 1000 s (tudo digitado em
+16 minutos desfazia de uma vez), e o teste de desempenho do quadro comparava
+segundos com 200. **Contorno:** `events.now()` usa `time.now_ms()`, com teste
+que dorme 120 ms e confere a diferença. **Sugestão:** corrigir a descrição no
+README, ou fazer `time_now()` devolver ms como documentado e deixar
+`time.now()` para segundos.

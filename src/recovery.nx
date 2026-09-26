@@ -1,0 +1,79 @@
+// src/recovery.nx — copias de recuperacao das abas com alteracoes nao
+// salvas, em ~/.cache/noxy-editor/recovery/<sha256 do caminho>.json
+// (XDG_CACHE_HOME quando definido; NOXY_EDITOR_CACHE_DIR sobrepoe, para os
+// testes). Cobrem fechar pelo X e queda do editor: a partida seguinte
+// reabre as abas (session.restore).
+use sys
+use io
+use crypto
+use strings select ends_with
+
+struct Copy
+    path: string
+    text: string
+    eol: string
+    saved_at: int
+end
+
+func cache_dir() -> string
+    let o: sys.EnvResult = sys.getenv("NOXY_EDITOR_CACHE_DIR")
+    if o.ok && o.value != "" then
+        return o.value
+    end
+    let x: sys.EnvResult = sys.getenv("XDG_CACHE_HOME")
+    if x.ok && x.value != "" then
+        return x.value + "/noxy-editor"
+    end
+    return sys.getenv("HOME").value + "/.cache/noxy-editor"
+end
+
+func dir() -> string
+    return cache_dir() + "/recovery"
+end
+
+func file_for(path: string) -> string
+    return dir() + "/" + crypto.sha256(to_bytes(path)) + ".json"
+end
+
+// write grava (ou substitui) a copia de path; false se nao conseguiu.
+func write(path: string, text: string, eol: string, now: int) -> bool
+    io.mkdir(dir())
+    let f: io.File = io.open(file_for(path), "w")
+    if !f.open then
+        return false
+    end
+    io.write(f, json_dumps(Copy(path, text, eol, now)))
+    io.close(f)
+    return true
+end
+
+func remove(path: string) -> void
+    io.remove(file_for(path))
+end
+
+// list le todas as copias; as ilegiveis sao ignoradas (e ficam no disco).
+func list() -> Copy[]
+    let out: Copy[] = []
+    let r: io.IOLinesResult = io.list_dir(dir())
+    if !r.ok then
+        return out
+    end
+    for name in r.data do
+        if !ends_with(name, ".json") then
+            continue
+        end
+        let f: io.File = io.open(dir() + "/" + name, "r")
+        if !f.open then
+            continue
+        end
+        let t: io.IOResult = io.read(f)
+        io.close(f)
+        let c: Copy = Copy("", "", "\n", 0)
+        if !t.ok || !json_loads(t.data, ref c) || c.path == "" then
+            eprint("copia de recuperacao ilegivel: " + dir() + "/" + name)
+            continue
+        end
+        append(ref out, c)
+    end
+    return out
+end

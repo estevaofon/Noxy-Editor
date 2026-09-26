@@ -9,6 +9,11 @@ use src.session as session
 use src.events as events
 use src.server as server
 
+// cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
+// ~/.config de quem roda
+sys.setenv("NOXY_EDITOR_CACHE_DIR", sys.getcwd() + "/tests/tmp/cache")
+sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+
 let fails = 0
 let total = 0
 
@@ -39,7 +44,7 @@ func owner() -> void
     while !s.quitting do
         let r: any = chan_recv(server.inbox)
         let req: server.Request = r
-        let now: int = time_now()
+        let now: int = events.now()
         chan_send(req.reply, events.dispatch(ref s, req.body, now))
     end
 end

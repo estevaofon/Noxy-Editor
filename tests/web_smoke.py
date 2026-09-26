@@ -15,7 +15,8 @@ open(os.path.join(demo, "exemplo.nx"), "w").write('use sys\n// um exemplo para o
 open(os.path.join(demo, "notas.txt"), "w").write("texto simples\n")
 open(os.path.join(demo, "src", "util.nx"), "w").write("let x = 1\n")
 cfg = os.path.join(os.getcwd(), "tests", "tmp", "web_config")
-env = dict(os.environ, NOXY_EDITOR_NO_WINDOW="1", NOXY_EDITOR_CONFIG_DIR=cfg)
+env = dict(os.environ, NOXY_EDITOR_NO_WINDOW="1", NOXY_EDITOR_CONFIG_DIR=cfg, NOXY_EDITOR_CACHE_DIR=os.path.join(os.getcwd(), "tests", "tmp", "web_cache"))
+import shutil as _sh; _sh.rmtree(env["NOXY_EDITOR_CACHE_DIR"], ignore_errors=True)
 if os.path.exists(os.path.join(cfg, "settings.json")): os.remove(os.path.join(cfg, "settings.json"))
 log = os.path.join("tests", "tmp", "web_editor.log")
 editor = subprocess.Popen(["noxy", "editor.nx", demo], env=env, stdout=subprocess.DEVNULL, stderr=open(log, "w"))
@@ -230,6 +231,26 @@ ws.call("Page.navigate", {"url": "file://" + page}); settle(2000)
 check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 3)
 time.sleep(3.5)
 check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 3)
+# recuperacao: editar sem salvar, esperar a copia (poll 1,5 s depois da
+# ultima edicao), matar o editor e abrir outro: a aba volta suja
+ev("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))"); settle()
+key("Home", mods=2); insert("// nao salvo\n")
+settle(2500)
+cache = env["NOXY_EDITOR_CACHE_DIR"]
+check("copia de recuperacao gravada sem outro evento", len(os.listdir(os.path.join(cache, "recovery"))) >= 1)
+for fn in os.listdir(os.path.join(cache, "recovery")):
+editor.kill(); editor.wait()
+editor = subprocess.Popen(["noxy", "editor.nx", demo], env=env, stdout=subprocess.DEVNULL, stderr=open(log, "w"))
+url = None
+for _ in range(50):
+    m = re.search(r"http://127\.0\.0\.1:\d+/\?t=[a-z0-9-]+", open(log).read())
+    if m: url = m.group(0); break
+    time.sleep(0.1)
+ws.call("Page.navigate", {"url": url}); settle(1500)
+check("depois de fechar sem salvar, a aba volta suja com o texto", "●" in ev("document.querySelector('.tab.active .name').textContent") and ev("document.querySelector('.line[data-n=\"0\"]').textContent") == "// nao salvo")
+check("mensagem de arquivos recuperados", "recuperado" in ev("document.getElementById('status-msg').textContent"))
+key("s", mods=2)
+check("salvar apaga a copia", len(os.listdir(os.path.join(cache, "recovery"))) == 0)
 chrome.terminate()
 editor.terminate()
 print(f"\n{'FALHOU' if fails else 'OK'}: {fails} falhas")

@@ -10,7 +10,7 @@ from gi.repository import Gtk, Gdk, WebKit2, GLib
 demo = os.path.join("tests", "tmp", "webkit"); os.makedirs(demo, exist_ok=True)
 open(os.path.join(demo, "longo.nx"), "w").write("".join(f"let v{i}: int = {i}   // " + "x" * 200 + "\n" for i in range(120)) + "print(\"fim\")\n")
 log = os.path.join("tests", "tmp", "webkit_editor.log")
-editor = subprocess.Popen(["noxy", "editor.nx", demo], env=dict(os.environ, NOXY_EDITOR_NO_WINDOW="1"), stdout=subprocess.DEVNULL, stderr=open(log, "w"))
+editor = subprocess.Popen(["noxy", "editor.nx", demo], env=dict(os.environ, NOXY_EDITOR_NO_WINDOW="1", NOXY_EDITOR_CONFIG_DIR=os.path.join(os.getcwd(), "tests", "tmp", "webkit_config"), NOXY_EDITOR_CACHE_DIR=os.path.join(os.getcwd(), "tests", "tmp", "webkit_cache")), stdout=subprocess.DEVNULL, stderr=open(log, "w"))
 url = None
 for _ in range(50):
     m = re.search(r"http://127\.0\.0\.1:\d+/\?t=[a-z0-9-]+", open(log).read())

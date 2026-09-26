@@ -5,6 +5,7 @@
 // a execucao e devolve o quadro.
 use strings select ends_with, starts_with, substring
 use errors select *
+use time
 use src.document as doc
 use src.editing as editing
 use src.session as session
@@ -39,9 +40,16 @@ func empty_event() -> Event
     return Event("", "", false, false, false, "", 0, 0, 0, "", 0, 0, 0, "", false, 0)
 end
 
+// now e o relogio do dono do estado, em milissegundos. time_now() da
+// stdlib devolve segundos (docs/ACHADOS.md), o que fazia o agrupamento do
+// undo durar 1000 s em vez de 1 s.
+func now() -> int
+    return time.now_ms()
+end
+
 // trivial: eventos que nao apagam a mensagem de status.
 func trivial(kind: string) -> bool
-    return kind == "poll" || kind == "scroll" || kind == "drag" || kind == "quit_if_idle" || kind == "bye"
+    return kind == "poll" || kind == "scroll" || kind == "drag" || kind == "quit_if_idle" || kind == "bye" || kind == "init"
 end
 
 // run_active salva a aba ativa se preciso e dispara a execucao.
@@ -423,6 +431,7 @@ func apply(s: session.Session, e: Event, now: int) -> session.Session
     elif e.kind != "init" && e.kind != "poll" then
         s.message = "evento desconhecido: " + e.kind
     end
+    session.recovery_tick(ref s, now, e.kind == "bye")
     if s.find.open && s.active >= 0 && !trivial(e.kind) then
         find.refresh(ref s.find, s.tabs[s.active].editor.doc, editing.sel_range(s.tabs[s.active].editor).start)
     end

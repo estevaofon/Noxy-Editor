@@ -40,8 +40,13 @@
   function rowsNow() { return Math.max(1, Math.floor(els.editor.clientHeight / LINE_H)); }
 
   // ---- fila de requisicoes
+  // idle: 1,5 s depois do ultimo evento que pode mudar o texto, um poll, para
+  // o Noxy gravar a copia de recuperacao mesmo com o usuario parado
+  const EDITS = { key: 1, text: 1, paste: 1, cut: 1, replace_one: 1, replace_all: 1 };
+  let idleTimer = 0;
   function send(ev) {
     if (dead) return;
+    if (EDITS[ev.kind]) { clearTimeout(idleTimer); idleTimer = setTimeout(() => send({ kind: "poll" }), 1500); }
     if (ev.kind === "scroll") {
       const q = queue.find((e) => e.kind === "scroll");
       if (q) { q.delta += ev.delta; pump(); return; }

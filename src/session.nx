@@ -11,9 +11,18 @@ use src.settings as settings
 use src.index as index
 use src.find as find
 use src.search as search
+use src.recovery as recovery
 
 struct Tab
     editor: editing.Editor
+    copy_text: string   // o texto da ultima copia de recuperacao gravada
+    copy_at: int        // ms dessa gravacao; 0 = nenhuma
+end
+
+let COPY_EVERY_MS = 1000
+
+func new_tab(ed: editing.Editor) -> Tab
+    return Tab(ed, "", 0)
 end
 
 struct Node
@@ -81,6 +90,7 @@ struct Session
     files_task: any     // task de index.build em andamento; null parada
     find: find.Find
     search: Search
+    recovery_warned: bool   // ja avisou que nao consegue gravar copias
 end
 
 // Search e a busca na pasta: a consulta, a task e os resultados; version
@@ -172,6 +182,62 @@ func poll_search(s: ref Session) -> void
     s.search.version = s.search.version + 1
 end
 
+// recovery_tick grava a copia das abas sujas cujo texto mudou desde a
+// ultima copia, no maximo uma vez por COPY_EVERY_MS; force (bye) grava na hora.
+func recovery_tick(s: ref Session, now: int, force: bool) -> void
+    for i in range(length(s.tabs)) do
+        let d: doc.Document = s.tabs[i].editor.doc
+        if !d.dirty then
+            continue
+        end
+        let text: string = doc.to_text(d)
+        if text == s.tabs[i].copy_text then
+            continue
+        end
+        if !force && s.tabs[i].copy_at > 0 && now - s.tabs[i].copy_at < COPY_EVERY_MS then
+            continue
+        end
+        if recovery.write(d.path, text, d.eol, now) then
+            s.tabs[i].copy_text = text
+            s.tabs[i].copy_at = now
+        elif !s.recovery_warned then
+            s.recovery_warned = true
+            s.message = "nao consegui gravar a copia de recuperacao em " + recovery.dir()
+        end
+    end
+end
+
+// restore reabre as copias desta raiz cujo texto difere do disco (ou cujo
+// arquivo sumiu) como abas sujas; apaga as iguais ao disco. Devolve quantas
+// abas reabriu.
+func restore(s: ref Session) -> int
+    let n: int = 0
+    for c in recovery.list() do
+        if !starts_with(c.path, s.root + "/") || find_tab(*s, c.path) >= 0 then
+            continue
+        end
+        if io.exists(c.path) then
+            let f: io.File = io.open(c.path, "r")
+            let r: io.IOResult = io.read(f)
+            io.close(f)
+            if r.ok && r.data == c.text then
+                recovery.remove(c.path)
+                continue
+            end
+        end
+        let d: doc.Document = doc.from_text(c.path, c.text)
+        d.eol = c.eol
+        d.dirty = true
+        let t: Tab = new_tab(editing.new_editor(d))
+        t.copy_text = c.text
+        t.copy_at = c.saved_at
+        append(ref s.tabs, t)
+        s.active = length(s.tabs) - 1
+        n = n + 1
+    end
+    return n
+end
+
 func close_list(s: ref Session) -> void
     s.list = List("", "", [], 0)
 end
@@ -198,7 +264,7 @@ func no_modal() -> Modal
 end
 
 func new_session(root: string) -> Session
-    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0))
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, "", "", Panel(false, "output"), settings.load(), List("", "", [], 0), [], null, find.new_find(), Search("", false, false, null, [], false, 0), false)
 end
 
 func basename(path: string) -> string
@@ -348,7 +414,7 @@ func open_file(s: ref Session, path: string) -> void
         s.message = "nao consegui ler " + relative(s.root, path) + ": " + r.error
         return
     end
-    append(ref s.tabs, Tab(editing.new_editor(doc.from_text(path, r.data))))
+    append(ref s.tabs, new_tab(editing.new_editor(doc.from_text(path, r.data))))
     s.active = length(s.tabs) - 1
 end
 
@@ -366,6 +432,9 @@ func save_tab(s: ref Session, i: int) -> bool
         return false
     end
     s.tabs[i].editor.doc.dirty = false
+    recovery.remove(path)
+    s.tabs[i].copy_text = ""
+    s.tabs[i].copy_at = 0
     return true
 end
 
@@ -439,6 +508,13 @@ func answer_modal(s: ref Session, id: string) -> void
         if id == "save" && !save_all(s) then
             return
         end
+        if id == "discard" then
+            for t in s.tabs do
+                if t.editor.doc.dirty then
+                    recovery.remove(t.editor.doc.path)
+                end
+            end
+        end
         s.quitting = true
     elif starts_with(pending, "close_tab:") then
         let i: int = to_int(substring(pending, 10, length(pending)))
@@ -447,6 +523,9 @@ func answer_modal(s: ref Session, id: string) -> void
         end
         if id == "save" && !save_tab(s, i) then
             return
+        end
+        if id == "discard" then
+            recovery.remove(s.tabs[i].editor.doc.path)
         end
         remove_tab(s, i)
     end

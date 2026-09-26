@@ -20,6 +20,11 @@ use src.find as find
 use src.search as search
 use src.recovery as recovery
 
+// cache e configuracao isolados: os testes nunca tocam no ~/.cache e no
+// ~/.config de quem roda
+sys.setenv("NOXY_EDITOR_CACHE_DIR", sys.getcwd() + "/tests/tmp/cache")
+sys.setenv("NOXY_EDITOR_CONFIG_DIR", sys.getcwd() + "/tests/tmp/config")
+
 let fails = 0
 let total = 0
 
@@ -466,13 +471,13 @@ func test_frame() -> void
         append(ref big, "let v" + to_str(i) + ": int = " + to_str(i) + " // linha")
     end
     let bs: session.Session = session.new_session(root)
-    append(ref bs.tabs, session.Tab(editing.new_editor(doc.Document(root + "/big.nx", big, false, "\n"))))
+    append(ref bs.tabs, session.new_tab(editing.new_editor(doc.Document(root + "/big.nx", big, false, "\n"))))
     bs.active = 0
     bs.rows = 50
     editing.move_doc_end(ref bs.tabs[0].editor, false, 50)
-    let t0: int = time_now()
+    let t0: int = events.now()
     let bf: string = frame.build(ref bs, 1, 0)
-    let dt: int = time_now() - t0
+    let dt: int = events.now() - t0
     check("arquivo de 5000 linhas: quadro so com as visiveis, em menos de 200 ms", strings.contains(bf, "\"total\":5000") && !strings.contains(bf, "\"n\":100,") && dt < 200)
 end
 
@@ -602,6 +607,13 @@ func test_events() -> void
     io.remove(sys.getcwd() + "/tests/tmp/run/config/settings.json")
     events.dispatch(ref s, "{\"kind\":\"quit\",\"rows\":20,\"tree_version\":2}", 20)
     check("quit marca quitting", s.quitting)
+
+    // o relogio do dono do estado e em milissegundos: o agrupamento do
+    // undo (1 s) e a copia de recuperacao (1 s) dependem disso
+    let c0: int = events.now()
+    sys.sleep(120)
+    let dc: int = events.now() - c0
+    check("events.now e em milissegundos (" + to_str(dc) + " ms em 120 ms de sono)", dc >= 100 && dc < 1000)
 
     // reload no navegador: cada pagina tem um id; o bye da pagina antiga pode
     // chegar antes ou depois do init da nova (o sendBeacon e assincrono), e
