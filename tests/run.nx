@@ -785,10 +785,10 @@ func test_platform() -> void
     let a: string = platform.arg("NOXY_EDITOR_TEST_ARG", "a b")
     if platform.windows() then
         check("arg no Windows: valor entre aspas numa variavel de ambiente, %NOME% no comando", a == "%NOXY_EDITOR_TEST_ARG%" && sys.getenv("NOXY_EDITOR_TEST_ARG").value == "\"a b\"")
-        check("o cmd expande a variavel com as aspas intactas", sys.exec_output("echo " + a).output == "\"a b\"")
+        check("o cmd expande a variavel com as aspas intactas", strings.trim(sys.exec_output("echo " + a).output) == "\"a b\"")
     else
         check("arg no Unix: aspas simples", a == "'a b'")
-        check("o sh recebe o valor inteiro", sys.exec_output("echo " + a).output == "a b")
+        check("o sh recebe o valor inteiro", strings.trim(sys.exec_output("echo " + a).output) == "a b")
     end
 end
 
