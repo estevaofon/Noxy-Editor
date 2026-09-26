@@ -1,0 +1,6 @@
+github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-darwin-amd64 sha256:5a75729f18bd920601be0a6f33d2c7dc0cd54057d61ba1c94f490e3ef67e0746
+github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-darwin-arm64 sha256:ae90a63b91aec0de3db8f8f9ff818256c8b54d09b843b39892d5befe19aef8da
+github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-linux-amd64 sha256:87dacc6285d93ea29262780103605681bf51dad4dbc3e8fa1a70fbca353fa4fa
+github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-windows-amd64.exe sha256:564ee2656beef36f1e3b6730e6bdc04e6dbe01bcbbe9cc099323cf2e4b606298
+github.com/estevaofon/noxy_webview v0.1.0 noxy_ext.toml sha256:0bef1a95db3515815d16212dca2a0207c11f31ff226331003ea15967d7f31633
+github.com/estevaofon/noxy_webview v0.1.0 sha256:a946693c22336a438a14e7a81a5f9a5e926b66ab31063509b419ae5ff70d5708

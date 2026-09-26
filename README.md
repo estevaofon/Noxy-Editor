@@ -12,39 +12,45 @@ da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.m
 
 Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
 arquivo numa aba. A janela é a extensão
-[noxy_webview](https://github.com/estevaofon/noxy_webview), que precisa estar
-instalada (veja "Extensão de janela"); se ela não conseguir abrir a janela
-nesta máquina, o editor abre num navegador em modo app (Chrome, Chromium,
-Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
+[noxy_webview](https://github.com/estevaofon/noxy_webview), instalada com
+`noxy --sync` (veja "Extensão de janela"); se ela não conseguir abrir a
+janela nesta máquina, o editor abre num navegador em modo app (Chrome,
+Chromium, Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
 só imprime a URL, para desenvolver o cliente ou rodar o smoke.
 
 ## Extensão de janela
 
-A janela nativa é o package `noxy_webview`, que o editor importa em
-`src/launch.nx`. Sem o binário dele em `noxy_libs/.../noxy_webview/bin/` a VM
-recusa o `use` na compilação e o editor não abre (é o achado 7 em
-`docs/ACHADOS.md`). Dois caminhos:
+A janela nativa é o package [`noxy_webview`](https://github.com/estevaofon/noxy_webview),
+que o editor importa em `src/launch.nx`. O `noxy.mod` já o exige
+(`require github.com/estevaofon/noxy_webview v0.1.0`), então num clone novo
+basta:
 
-- **Publicado** (quando houver release no GitHub): `require
-  github.com/estevaofon/noxy_webview vX.Y.Z` no `noxy.mod` e `noxy --sync`,
-  que baixa o binário da sua plataforma e grava os hashes em `noxy.sum`.
-- **Desenvolvimento** (hoje): clone a extensão ao lado deste repositório,
-  compile e linke o checkout em `noxy_libs`. A VM avisa uma vez que não há
-  entrada em `noxy.sum` e roda.
+    noxy --sync
 
-  ```bash
-  git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
-  sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
-  (cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
-  mkdir -p noxy_libs/github_com/estevaofon
-  ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
-  ```
+Isso baixa o binário da sua plataforma (Linux, Windows, macOS Intel e Apple
+Silicon) para `noxy_libs/.../noxy_webview/bin/` e confere os hashes gravados
+em `noxy.sum`. Sem esse binário a VM recusa o `use` na compilação e o editor
+não abre (achado 7 em `docs/ACHADOS.md`). Em runtime, o Linux precisa de
+`libwebkit2gtk-4.1`, presente em desktops GNOME.
 
 Se a extensão estiver instalada mas não conseguir abrir a janela nesta máquina
 (sem `libwebkit2gtk-4.1`, por exemplo), o editor abre num navegador em modo
 app. Nesse modo a URL com o token não vai na linha de comando: o editor grava
 uma página de redirecionamento num diretório temporário só seu e passa o
 caminho dela ao navegador.
+
+Para mexer na extensão em vez de usar o release, clone-a ao lado deste
+repositório, compile e linke o checkout no lugar do package instalado:
+
+```bash
+git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
+(cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
+rm -rf noxy_libs/github_com/estevaofon/noxy_webview
+ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
+```
+
+A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
 
 ## Atalhos
 
