@@ -1,6 +1,7 @@
 // tests/run.nx — suite do editor. Roda sem navegador:
 //     noxy tests/run.nx      (a partir da raiz do projeto)
 use sys
+use crypto
 use src.document as doc
 use src.lexer as lexer
 use io
@@ -17,6 +18,7 @@ use src.commands as commands
 use src.index as index
 use src.find as find
 use src.search as search
+use src.recovery as recovery
 
 let fails = 0
 let total = 0
@@ -571,7 +573,7 @@ func test_events() -> void
     let ff: string = events.dispatch(ref s, "{\"kind\":\"find\",\"text\":\"c\",\"rows\":20,\"tree_version\":2}", 19)
     check("consulta calcula ocorrencias e vai no quadro", length(s.find.matches) == 1 && strings.contains(ff, "\"query\":\"c\"") && strings.contains(ff, "\"c\":true") && strings.contains(ff, "\"f\":true"))
     events.dispatch(ref s, "{\"kind\":\"text\",\"text\":\"c\",\"rows\":20,\"tree_version\":2}", 19)
-    check("editar recalcula as ocorrencias", length(s.find.matches) == 1 && s.tabs[s.active].editor.doc.lines[0] == "print(c)" || length(s.find.matches) >= 1)
+    check("editar recalcula as ocorrencias (digitar c sobre a selecao)", length(s.find.matches) == 1 && s.tabs[s.active].editor.doc.lines[0] == "print(\"c\")")
     events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"h\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 19)
     check("ctrl+h abre com a linha de substituir", s.find.open && s.find.replace)
     events.dispatch(ref s, "{\"kind\":\"replace_all\",\"text\":\"k\",\"rows\":20,\"tree_version\":2}", 19)
@@ -704,7 +706,7 @@ func test_find() -> void
     find.refresh(ref f, ed.doc, ed.cursor)
     check("refresh calcula ocorrencias e a atual", length(f.matches) == 5 && f.current == 0)
     find.goto(ref ed, ref f, 1, 10)
-    check("goto seleciona a ocorrencia", ed.anchor.line == 1 && ed.anchor.col == 1 && ed.cursor.col == 2 && editing.copy(ed) == "L" || true)
+    check("goto seleciona a ocorrencia", ed.anchor.line == 1 && ed.anchor.col == 8 && ed.cursor.col == 9 && editing.copy(ed) == "a")
     find.next(ref ed, ref f, 10)
     check("next avanca", f.current == 2 && ed.cursor.line == 1)
     find.prev(ref ed, ref f, 10)
@@ -766,6 +768,68 @@ func test_search() -> void
     sys.exec("rm -rf " + browser.shell_quote(root + "/node_modules"))
 end
 
+func test_recovery() -> void
+    print("recovery")
+    let cache: string = sys.getcwd() + "/tests/tmp/cache"
+    sys.setenv("NOXY_EDITOR_CACHE_DIR", cache)
+    sys.exec("rm -rf " + browser.shell_quote(cache))
+    check("sem copias, lista vazia", length(recovery.list()) == 0)
+    check("write grava a copia", recovery.write("/x/a.nx", "oi\n", "\n", 5))
+    let cs: recovery.Copy[] = recovery.list()
+    check("list le a copia", length(cs) == 1 && cs[0].path == "/x/a.nx" && cs[0].text == "oi\n" && cs[0].saved_at == 5)
+    check("nome do arquivo e o sha256 do caminho", io.exists(cache + "/recovery/" + crypto.sha256(to_bytes("/x/a.nx")) + ".json"))
+    recovery.write("/x/a.nx", "tchau", "\n", 6)
+    check("gravar de novo substitui", length(recovery.list()) == 1 && recovery.list()[0].text == "tchau")
+    write_file(cache + "/recovery/lixo.json", "{nope")
+    check("copia ilegivel e ignorada, nao apagada", length(recovery.list()) == 1 && io.exists(cache + "/recovery/lixo.json"))
+    io.remove(cache + "/recovery/lixo.json")
+    recovery.remove("/x/a.nx")
+    check("remove apaga", length(recovery.list()) == 0)
+
+    let root: string = tmp_root()
+    let s: session.Session = session.new_session(root)
+    session.load(ref s)
+    session.open_file(ref s, root + "/b.nx")
+    editing.insert_text(ref s.tabs[0].editor, "Z", 10, 1000)
+    session.recovery_tick(ref s, 500, false)
+    check("aba suja: primeira copia sai no primeiro tick", length(recovery.list()) == 1)
+    editing.insert_text(ref s.tabs[0].editor, "Y", 10, 1100)
+    session.recovery_tick(ref s, 900, false)
+    check("menos de 1 s depois da ultima copia: espera", recovery.list()[0].text != doc.to_text(s.tabs[0].editor.doc))
+    session.recovery_tick(ref s, 1600, false)
+    check("passou 1 s: grava o texto novo", recovery.list()[0].text == doc.to_text(s.tabs[0].editor.doc))
+    editing.insert_text(ref s.tabs[0].editor, "X", 10, 1200)
+    session.recovery_tick(ref s, 1700, true)
+    check("force (bye) grava na hora", recovery.list()[0].text == doc.to_text(s.tabs[0].editor.doc))
+
+    // a partida seguinte reabre a aba suja com o texto da copia
+    let s2: session.Session = session.new_session(root)
+    session.load(ref s2)
+    check("restore reabre uma aba", session.restore(ref s2) == 1 && length(s2.tabs) == 1)
+    check("aba recuperada suja, com o texto da copia", s2.tabs[0].editor.doc.dirty && s2.tabs[0].editor.doc.lines[0] == "ZYXlet b = 1")
+    session.save(ref s2)
+    check("salvar apaga a copia", length(recovery.list()) == 0)
+
+    // copia igual ao disco e apagada sem abrir aba
+    recovery.write(root + "/a.txt", read_file(root + "/a.txt"), "\n", 1)
+    let s3: session.Session = session.new_session(root)
+    session.load(ref s3)
+    check("copia igual ao disco: nenhuma aba e copia apagada", session.restore(ref s3) == 0 && length(recovery.list()) == 0)
+    // arquivo que sumiu: reabre como aba suja
+    recovery.write(root + "/sumiu.nx", "let z = 1", "\n", 1)
+    check("arquivo apagado: reabre com o texto da copia", session.restore(ref s3) == 1 && s3.tabs[0].editor.doc.lines[0] == "let z = 1" && s3.tabs[0].editor.doc.dirty)
+    // copia de outra pasta fica para quando ela for aberta
+    recovery.write("/outra/pasta/q.nx", "q", "\n", 1)
+    let s4: session.Session = session.new_session(root)
+    session.load(ref s4)
+    check("copia de fora da raiz nao abre e nao e apagada", session.restore(ref s4) == 1 && length(recovery.list()) == 2)
+    // nao salvar apaga
+    session.close_tab(ref s4, 0)
+    session.answer_modal(ref s4, "discard")
+    check("fechar sem salvar apaga a copia", length(recovery.list()) == 1)
+    recovery.remove("/outra/pasta/q.nx")
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -781,4 +845,5 @@ test_commands()
 test_index()
 test_find()
 test_search()
+test_recovery()
 report()
