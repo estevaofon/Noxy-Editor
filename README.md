@@ -28,12 +28,17 @@ recusa o `use` na compilação e o editor não abre (é o achado 7 em
 - **Publicado** (quando houver release no GitHub): `require
   github.com/estevaofon/noxy_webview vX.Y.Z` no `noxy.mod` e `noxy --sync`,
   que baixa o binário da sua plataforma e grava os hashes em `noxy.sum`.
-- **Desenvolvimento** (hoje): clone `noxy_webview` ao lado deste repositório,
-  compile (`sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev`, então
-  `sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/`)
-  e linke o checkout em
-  `noxy_libs/github_com/estevaofon/noxy_webview`. A VM avisa uma vez que não
-  há entrada em `noxy.sum` e roda.
+- **Desenvolvimento** (hoje): clone a extensão ao lado deste repositório,
+  compile e linke o checkout em `noxy_libs`. A VM avisa uma vez que não há
+  entrada em `noxy.sum` e roda.
+
+  ```bash
+  git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
+  sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
+  (cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
+  mkdir -p noxy_libs/github_com/estevaofon
+  ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
+  ```
 
 Se a extensão estiver instalada mas não conseguir abrir a janela nesta máquina
 (sem `libwebkit2gtk-4.1`, por exemplo), o editor abre num navegador em modo
