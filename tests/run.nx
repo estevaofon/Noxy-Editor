@@ -14,6 +14,7 @@ use src.events as events
 use src.browser as browser
 use src.settings as settings
 use src.commands as commands
+use src.index as index
 
 let fails = 0
 let total = 0
@@ -547,6 +548,21 @@ func test_events() -> void
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"palette\",\"rows\":20,\"tree_version\":2}", 19)
     events.dispatch(ref s, "{\"kind\":\"list_close\",\"rows\":20,\"tree_version\":2}", 19)
     check("list_close fecha sem executar", s.list.kind == "" && s.settings.theme == "monokai")
+    session.start_index(ref s)
+    let waited2: int = 0
+    while length(s.files) == 0 && waited2 < 100 do
+        sys.sleep(20)
+        events.dispatch(ref s, "{\"kind\":\"poll\",\"rows\":20,\"tree_version\":2}", 19)
+        waited2 = waited2 + 1
+    end
+    check("indice construido numa task e recolhido pelo poll", length(s.files) >= 4)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"p\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 19)
+    check("ctrl+p abre o quick open com os arquivos", s.list.kind == "files" && length(s.list.items) >= 4)
+    events.dispatch(ref s, "{\"kind\":\"list_filter\",\"text\":\"c.nx\",\"rows\":20,\"tree_version\":2}", 19)
+    check("filtro difuso no quick open", length(s.list.items) >= 1 && s.list.items[0].label == "sub/c.nx")
+    let tabs_before: int = length(s.tabs)
+    events.dispatch(ref s, "{\"kind\":\"list_pick\",\"index\":0,\"rows\":20,\"tree_version\":2}", 19)
+    check("escolher abre o arquivo e fecha a lista", length(s.tabs) == tabs_before + 1 && s.list.kind == "" && strings.ends_with(s.tabs[s.active].editor.doc.path, "/sub/c.nx"))
     let was_open: bool = s.panel.open
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando panel alterna o painel", s.panel.open != was_open)
@@ -623,6 +639,23 @@ func test_commands() -> void
     check("atalho no hint", commands.filter(all, "salvar")[0].hint == "Ctrl+S")
 end
 
+func test_index() -> void
+    print("index")
+    let root: string = tmp_root()
+    io.mkdir(root + "/noxy_libs/x")
+    write_file(root + "/noxy_libs/x/lib.nx", "")
+    let files: string[] = index.build(root)
+    check("indice recursivo, sem ocultos nem noxy_libs", length(files) == 5 && contains(files, "sub/c.nx") && contains(files, "b.nx") && !contains(files, ".hidden") && !contains(files, "noxy_libs/x/lib.nx"))
+    check("sem consulta: os primeiros em ordem", index.filter(files, "", 2)[0].path == "a.txt" && length(index.filter(files, "", 2)) == 2)
+    let m: index.Match[] = index.filter(files, "c", 10)
+    check("inicio do nome pontua mais que letra no meio", m[0].path == "sub/c.nx")
+    check("subsequencia casa (hlo -> hello.nx)", index.filter(files, "hlo", 10)[0].path == "hello.nx")
+    check("sem casamento devolve vazio", length(index.filter(files, "zzz", 10)) == 0)
+    check("consulta nao diferencia maiusculas", index.filter(files, "HELLO", 10)[0].path == "hello.nx")
+    check("score: nome inteiro > caminho longo", index.score("editor.nx", "edit") > index.score("src/x/editorial.nx", "edit"))
+    sys.exec("rm -rf " + browser.shell_quote(root + "/noxy_libs"))
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -635,4 +668,5 @@ test_events()
 test_browser()
 test_settings()
 test_commands()
+test_index()
 report()
