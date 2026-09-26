@@ -1,0 +1,303 @@
+// src/session.nx — a sessao: raiz aberta, abas, arvore de arquivos, modal,
+// execucao e as operacoes de arquivo. Nao conhece HTTP nem o quadro. Toda
+// falha de arquivo vira message; nada aqui levanta erro.
+use strings select substring, split, join_count, starts_with
+use io
+use errors select Result, Failure
+use src.document as doc
+use src.editing as editing
+use src.runner as runner
+
+struct Tab
+    editor: editing.Editor
+end
+
+struct Node
+    path: string        // absoluto
+    name: string
+    is_dir: bool
+    depth: int
+    expanded: bool
+end
+
+struct Button
+    label: string
+    id: string          // "save", "discard" ou "cancel"
+end
+
+struct Modal
+    text: string        // "" quando nao ha modal
+    buttons: Button[]
+    pending: string     // o que fazer depois: "close_tab:3" ou "quit"
+end
+
+struct Session
+    root: string        // absoluto, sem barra final
+    tabs: Tab[]
+    active: int         // -1 sem aba
+    tree: Node[]        // lista plana das entradas visiveis
+    tree_version: int   // muda a cada alteracao da arvore
+    rows: int           // ultimo valor informado pelo cliente
+    run: runner.RunState
+    message: string     // status transitorio
+    modal: Modal
+    clipboard: string   // preenchido por copy/cut, consumido pelo quadro
+    quitting: bool
+    bye: bool           // a pagina avisou que esta fechando (pagehide)
+    last_event: int     // ms do ultimo evento que nao foi quit_if_idle
+end
+
+func no_modal() -> Modal
+    return Modal("", [], "")
+end
+
+func new_session(root: string) -> Session
+    return Session(root, [], -1, [], 1, 30, runner.new_run(), "", no_modal(), "", false, false, 0)
+end
+
+func basename(path: string) -> string
+    let parts: string[] = split(path, "/").parts
+    return parts[length(parts) - 1]
+end
+
+func dirname(path: string) -> string
+    let parts: string[] = split(path, "/").parts
+    if length(parts) <= 1 then
+        return "."
+    end
+    if length(parts) == 2 && parts[0] == "" then
+        return "/"
+    end
+    return join_count(parts, "/", length(parts) - 1)
+end
+
+func relative(root: string, path: string) -> string
+    if starts_with(path, root + "/") then
+        return substring(path, length(root) + 1, length(path))
+    end
+    return path
+end
+
+// sort_nodes ordena por nome (insercao: listas por diretorio sao pequenas;
+// a stdlib nao tem sort — docs/ACHADOS.md).
+func sort_nodes(nodes: Node[]) -> Node[]
+    let out: Node[] = nodes
+    for i in range(1, length(out)) do
+        let j: int = i
+        while j > 0 && out[j - 1].name > out[j].name do
+            let t: Node = out[j - 1]
+            out[j - 1] = out[j]
+            out[j] = t
+            j = j - 1
+        end
+    end
+    return out
+end
+
+// list_children lista um diretorio: pastas antes de arquivos, ordenados,
+// sem entradas iniciadas por ponto. Vazio se nao der para ler.
+func list_children(path: string, depth: int) -> Node[]
+    let r: io.IOLinesResult = io.list_dir(path)
+    if !r.ok then
+        return []
+    end
+    let dirs: Node[] = []
+    let files: Node[] = []
+    for name in r.data do
+        if !starts_with(name, ".") then
+            let full: string = path + "/" + name
+            if io.stat(full).is_dir then
+                append(ref dirs, Node(full, name, true, depth, false))
+            else
+                append(ref files, Node(full, name, false, depth, false))
+            end
+        end
+    end
+    let out: Node[] = sort_nodes(dirs)
+    for f in sort_nodes(files) do
+        append(ref out, f)
+    end
+    return out
+end
+
+func load(s: ref Session) -> bool
+    let st: io.FileInfo = io.stat(s.root)
+    if !st.exists || !st.is_dir then
+        return false
+    end
+    s.tree = list_children(s.root, 0)
+    s.tree_version = s.tree_version + 1
+    return true
+end
+
+func find_node(s: Session, path: string) -> int
+    for i in range(length(s.tree)) do
+        if s.tree[i].path == path then
+            return i
+        end
+    end
+    return -1
+end
+
+// toggle_dir expande (listando os filhos na hora) ou recolhe (removendo
+// todos os descendentes) a pasta em path.
+func toggle_dir(s: ref Session, path: string) -> void
+    let i: int = find_node(*s, path)
+    if i < 0 || !s.tree[i].is_dir then
+        return
+    end
+    let node: Node = s.tree[i]
+    let out: Node[] = slice(s.tree, 0, i)
+    if node.expanded then
+        node.expanded = false
+        append(ref out, node)
+        let j: int = i + 1
+        while j < length(s.tree) && s.tree[j].depth > node.depth do
+            j = j + 1
+        end
+        for k in range(j, length(s.tree)) do
+            append(ref out, s.tree[k])
+        end
+    else
+        node.expanded = true
+        append(ref out, node)
+        for c in list_children(node.path, node.depth + 1) do
+            append(ref out, c)
+        end
+        for k in range(i + 1, length(s.tree)) do
+            append(ref out, s.tree[k])
+        end
+    end
+    s.tree = out
+    s.tree_version = s.tree_version + 1
+end
+
+func find_tab(s: Session, path: string) -> int
+    for i in range(length(s.tabs)) do
+        if s.tabs[i].editor.doc.path == path then
+            return i
+        end
+    end
+    return -1
+end
+
+func open_file(s: ref Session, path: string) -> void
+    let i: int = find_tab(*s, path)
+    if i >= 0 then
+        s.active = i
+        return
+    end
+    let f: io.File = io.open(path, "r")
+    if !f.open then
+        s.message = "nao consegui abrir " + relative(s.root, path)
+        return
+    end
+    let r: io.IOResult = io.read(f)
+    io.close(f)
+    if !r.ok then
+        s.message = "nao consegui ler " + relative(s.root, path) + ": " + r.error
+        return
+    end
+    append(ref s.tabs, Tab(editing.new_editor(doc.from_text(path, r.data))))
+    s.active = length(s.tabs) - 1
+end
+
+func save_tab(s: ref Session, i: int) -> bool
+    let path: string = s.tabs[i].editor.doc.path
+    let f: io.File = io.open(path, "w")
+    if !f.open then
+        s.message = "nao consegui gravar " + relative(s.root, path)
+        return false
+    end
+    let r: Result<int> = io.write_result(f, doc.to_text(s.tabs[i].editor.doc))
+    io.close(f)
+    if !r.ok then
+        s.message = "nao consegui gravar " + relative(s.root, path) + ": " + r.failure.message
+        return false
+    end
+    s.tabs[i].editor.doc.dirty = false
+    return true
+end
+
+func save(s: ref Session) -> void
+    if s.active < 0 then
+        return
+    end
+    if save_tab(s, s.active) then
+        s.message = "salvo " + relative(s.root, s.tabs[s.active].editor.doc.path)
+    end
+end
+
+func save_all(s: ref Session) -> bool
+    for i in range(length(s.tabs)) do
+        if s.tabs[i].editor.doc.dirty && !save_tab(s, i) then
+            return false
+        end
+    end
+    return true
+end
+
+func has_dirty(s: Session) -> bool
+    for t in s.tabs do
+        if t.editor.doc.dirty then
+            return true
+        end
+    end
+    return false
+end
+
+// remove_tab tira a aba i e ativa a vizinha.
+func remove_tab(s: ref Session, i: int) -> void
+    pop(ref s.tabs, i)
+    if length(s.tabs) == 0 then
+        s.active = -1
+    elif s.active >= length(s.tabs) then
+        s.active = length(s.tabs) - 1
+    elif s.active > i then
+        s.active = s.active - 1
+    end
+end
+
+func close_tab(s: ref Session, i: int) -> void
+    if i < 0 || i >= length(s.tabs) then
+        return
+    end
+    if s.tabs[i].editor.doc.dirty then
+        let name: string = basename(s.tabs[i].editor.doc.path)
+        s.modal = Modal("Fechar " + name + " sem salvar?", [Button("Salvar", "save"), Button("Nao salvar", "discard"), Button("Cancelar", "cancel")], "close_tab:" + to_str(i))
+        return
+    end
+    remove_tab(s, i)
+end
+
+func request_quit(s: ref Session) -> void
+    if has_dirty(*s) then
+        s.modal = Modal("Ha abas com alteracoes nao salvas. Sair?", [Button("Salvar tudo", "save"), Button("Sair sem salvar", "discard"), Button("Cancelar", "cancel")], "quit")
+        return
+    end
+    s.quitting = true
+end
+
+// answer_modal executa o pendente conforme o botao; "cancel" so fecha.
+func answer_modal(s: ref Session, id: string) -> void
+    let pending: string = s.modal.pending
+    s.modal = no_modal()
+    if id == "cancel" then
+        return
+    end
+    if pending == "quit" then
+        if id == "save" && !save_all(s) then
+            return
+        end
+        s.quitting = true
+    elif starts_with(pending, "close_tab:") then
+        let i: int = to_int(substring(pending, 10, length(pending)))
+        if i < 0 || i >= length(s.tabs) then
+            return
+        end
+        if id == "save" && !save_tab(s, i) then
+            return
+        end
+        remove_tab(s, i)
+    end
+end

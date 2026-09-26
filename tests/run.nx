@@ -8,6 +8,7 @@ use src.history as history
 use src.editing as editing
 use src.runner as runner
 use strings
+use src.session as session
 
 let fails = 0
 let total = 0
@@ -352,10 +353,74 @@ func test_runner() -> void
     check("arquivo inexistente mostra o erro do noxy", !bad.running && strings.contains(bad.text, "Error reading file") && strings.contains(bad.text, "[saiu com 1]"))
 end
 
+func test_session() -> void
+    print("session")
+    let root: string = tmp_root()
+    let s: session.Session = session.new_session(root)
+    let missing: session.Session = session.new_session(root + "/nao")
+    check("load de raiz inexistente falha", !session.load(ref missing))
+    check("load", session.load(ref s) && s.tree_version == 2)
+    let names: string = ""
+    for n in s.tree do
+        names = names + n.name + " "
+    end
+    check("arvore: pastas antes, ordenada, sem ocultos", names == "sub a.txt b.nx hello.nx ")
+    session.toggle_dir(ref s, root + "/sub")
+    check("expandir lista os filhos abaixo", length(s.tree) == 5 && s.tree[1].name == "c.nx" && s.tree[1].depth == 1 && s.tree[0].expanded && s.tree_version == 3)
+    session.toggle_dir(ref s, root + "/sub")
+    check("recolher remove os descendentes", length(s.tree) == 4 && !s.tree[0].expanded)
+    session.toggle_dir(ref s, root + "/b.nx")
+    check("toggle em arquivo nao faz nada", length(s.tree) == 4 && s.tree_version == 4)
+
+    session.open_file(ref s, root + "/b.nx")
+    check("abrir cria a aba e ativa", length(s.tabs) == 1 && s.active == 0 && s.tabs[0].editor.doc.lines[0] == "let b = 1")
+    session.open_file(ref s, root + "/sub/c.nx")
+    session.open_file(ref s, root + "/b.nx")
+    check("abrir de novo so ativa", length(s.tabs) == 2 && s.active == 0)
+    session.open_file(ref s, root + "/nao.nx")
+    check("abrir inexistente vira mensagem", length(s.tabs) == 2 && s.message != "")
+
+    editing.insert_text(ref s.tabs[0].editor, "x", 10, 1)
+    check("editar suja a aba", s.tabs[0].editor.doc.dirty && session.has_dirty(s))
+    session.save(ref s)
+    check("salvar grava e limpa dirty", read_file(root + "/b.nx") == "xlet b = 1\n" && !s.tabs[0].editor.doc.dirty && s.message == "salvo b.nx")
+
+    editing.insert_text(ref s.tabs[0].editor, "y", 10, 2)
+    session.close_tab(ref s, 0)
+    check("fechar aba suja abre modal", s.modal.text != "" && s.modal.pending == "close_tab:0" && length(s.tabs) == 2)
+    session.answer_modal(ref s, "cancel")
+    check("cancelar fecha o modal e mantem a aba", s.modal.text == "" && length(s.tabs) == 2)
+    session.close_tab(ref s, 0)
+    session.answer_modal(ref s, "discard")
+    check("nao salvar fecha a aba sem gravar", length(s.tabs) == 1 && read_file(root + "/b.nx") == "xlet b = 1\n" && s.active == 0)
+    session.close_tab(ref s, 0)
+    check("fechar aba limpa remove direto", length(s.tabs) == 0 && s.active == -1)
+
+    session.open_file(ref s, root + "/sub/c.nx")
+    editing.insert_text(ref s.tabs[0].editor, "z", 10, 3)
+    session.request_quit(ref s)
+    check("sair com aba suja abre modal", s.modal.pending == "quit" && !s.quitting)
+    session.answer_modal(ref s, "save")
+    check("salvar tudo e sair", s.quitting && read_file(root + "/sub/c.nx") == "zprint(\"c\")\n")
+    let bf: io.File = io.open(root + "/bin.nx", "w")
+    io.write_bytes(bf, hex_decode("fffe00"))
+    io.close(bf)
+    let before: int = length(s.tabs)
+    session.open_file(ref s, root + "/bin.nx")
+    check("arquivo que nao e UTF-8 vira mensagem, sem aba", length(s.tabs) == before && strings.contains(s.message, "nao consegui ler"))
+    session.open_file(ref s, root + "/b.nx")
+    s.tabs[s.active].editor.doc.path = root + "/nao_existe/b.nx"
+    editing.insert_text(ref s.tabs[s.active].editor, "q", 10, 9)
+    session.save(ref s)
+    check("salvar num caminho que nao existe vira mensagem e a aba continua suja", strings.contains(s.message, "nao consegui gravar") && s.tabs[s.active].editor.doc.dirty)
+    check("relative e basename", session.relative(root, root + "/sub/c.nx") == "sub/c.nx" && session.basename("/a/b.nx") == "b.nx" && session.dirname("/a/b.nx") == "/a" && session.dirname("b.nx") == ".")
+end
+
 test_document()
 test_lexer()
 test_history()
 test_editing_moves()
 test_editing_text()
 test_runner()
+test_session()
 report()
