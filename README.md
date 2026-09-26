@@ -12,9 +12,10 @@ da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.m
 
 Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
 arquivo numa aba. A janela é a extensão
-[noxy_webview](https://github.com/estevaofon/noxy_webview); se ela não
-estiver disponível, o editor abre num navegador em modo app (Chrome, Chromium,
-Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
+[noxy_webview](https://github.com/estevaofon/noxy_webview), que precisa estar
+instalada (`noxy --sync`); se ela não conseguir abrir a janela nesta máquina
+(sem WebKitGTK, por exemplo), o editor abre num navegador em modo app (Chrome,
+Chromium, Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
 só imprime a URL, para desenvolver o cliente ou rodar o smoke.
 
 ## Atalhos

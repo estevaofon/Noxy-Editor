@@ -736,8 +736,10 @@ vez, `wait` destrava no fechamento e já vê a janela destruída, erros antes de
 
 ### 11.5 Fallback (`src/launch.nx`)
 
-Se `call_result(webview.open, ...)` falha, o editor escreve no stderr
-`janela pela extensão indisponível: <motivo>; abrindo no navegador` e tenta,
+Se `call_result(webview.open, ...)` falha (o processo da extensão não sobe,
+por exemplo sem `libwebkit2gtk-4.1` na máquina, ou morre), o editor escreve
+no stderr `janela pela extensão indisponível: <motivo>; abrindo no navegador`
+e tenta,
 na ordem, `google-chrome`, `chromium`, `chromium-browser`, `brave-browser`,
 `microsoft-edge`, cada um com `--app=<url>` em segundo plano
 (`sys.exec("<bin> --app='<url>' >/dev/null 2>&1 &")`, testando a existência
@@ -757,6 +759,7 @@ modo o loop dono encerra 3 s depois do `bye` que a página manda em
 | Kind desconhecido | `message` |
 | Erro de runtime no despacho | `call_result`: `message = "erro interno: ..."`, stack no stderr |
 | Extensão morre no meio | `wait` volta com erro; o editor avisa no stderr e encerra |
+| Package `noxy_webview` sem o binário da plataforma | A VM recusa o `use` na compilação (`binary ... not found — run 'noxy --sync'`): o editor não abre. O fallback só cobre falhas em tempo de execução; instalar o package é pré-requisito (achado 7) |
 | Programa executado não termina | o editor continua; sem interrupção na v1 |
 | Fechar a janela pelo X com abas sujas | alterações perdidas; Ctrl+Q é o caminho com modal. Limitação da v1 |
 
@@ -850,5 +853,6 @@ GitHub (o passo de publicar é do autor, depois da v1 rodar).
 - `noxy tests/run.nx` e `noxy tests/protocol.nx` passam sem janela;
   `go test ./...` passa na extensão; `smoke.nx` imprime `ok`.
 - Fechar a janela encerra o processo `noxy` sem órfãos.
-- Sem a extensão, o editor abre no navegador em modo app.
+- Com a extensão instalada mas incapaz de abrir a janela (processo que não
+  sobe), o editor abre no navegador em modo app.
 - `docs/ACHADOS.md` tem os achados encontrados durante a implementação.

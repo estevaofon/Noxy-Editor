@@ -11,5 +11,5 @@ provam. Conferir a cada release, com a extensão instalada:
 - [ ] Linha mais larga que a janela rola horizontalmente e o cursor acompanha.
 - [ ] Ctrl+Q com aba suja abre o modal; "Salvar tudo" grava e fecha a janela; o processo `noxy` termina (`pgrep noxy` vazio).
 - [ ] Fechar pelo X encerra o processo sem órfãos (`pgrep -f noxy-plugin-webview` vazio).
-- [ ] Sem a extensão (`mv bin bin.off` no package), o editor avisa no terminal e abre no navegador em modo app; fechar a janela do navegador encerra o `noxy` em até 3 s.
+- [ ] Com a extensão incapaz de abrir (troque `bin/noxy-plugin-webview-linux-amd64` no package por um script `#!/bin/sh` que faz `exit 127`, guardando o binário real), o editor avisa `janela pela extensao indisponivel` no terminal e abre no navegador em modo app; fechar a janela do navegador encerra o `noxy` em até 3 s. Restaure o binário depois.
 - [ ] `NOXY_WEBVIEW_DEBUG=1 noxy editor.nx .` abre com o inspetor do WebKit disponível.

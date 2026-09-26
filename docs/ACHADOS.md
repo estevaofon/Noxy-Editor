@@ -55,3 +55,16 @@ em vez do `module not found: src.server` que os outros casos dão.
 falha de carga do módulo antes de resolver membros qualificados
 (`server.Request` como tipo de campo parece ser o gatilho, diferente de
 `server.x` numa expressão).
+
+## 7. A VM exige o binário da extensão na importação
+
+**Onde:** `src/launch.nx` (`use github_com.estevaofon.noxy_webview.noxy_webview`).
+**O que:** `docs/EXTENSIONS.md` diz que o processo de uma extensão começa na
+primeira chamada, mas o `use` já falha na compilação quando o binário da
+plataforma não está em `bin/` (`extension "webview": binary ... not found —
+run 'noxy --sync'`). Não há como um programa degradar graciosamente quando o
+package está presente sem o binário: o fallback para o navegador só alcança
+falhas em tempo de execução (processo que não sobe ou morre). **Contorno:**
+documentar o package como pré-requisito. **Sugestão:** adiar a verificação do
+binário para a primeira chamada, como a documentação descreve, ou oferecer um
+`use ... optional` cujas chamadas falhem em runtime.

@@ -4960,8 +4960,10 @@ Esperado: `141/141`, `10/10`, `OK: 0 falhas` (o smoke usa `NOXY_EDITOR_NO_WINDOW
 Run: `noxy editor.nx /home/estevao/Documentos/noxy_projects/zombie_apocalypse`
 Esperado: janela nativa `Noxy Editor` com a árvore; o terminal diz `(webview)`. Abrir `zombie_apocalypse.nx` muda o título da janela para `zombie_apocalypse.nx — Noxy Editor`; digitar acrescenta `●`; Ctrl+Z; Ctrl+S; F5 mostra a saída (o jogo abre a janela dele; feche-a). Fechar pelo X: o terminal volta ao prompt e `pgrep -f "noxy editor.nx"` e `pgrep -f noxy-plugin-webview` ficam vazios.
 
-Run: `mv noxy_libs/github_com/estevaofon/noxy_webview/bin noxy_libs/github_com/estevaofon/noxy_webview/bin.off && noxy editor.nx . ; mv noxy_libs/github_com/estevaofon/noxy_webview/bin.off noxy_libs/github_com/estevaofon/noxy_webview/bin`
-Esperado: `janela pela extensao indisponivel: extension 'webview' trapped: ...; abrindo no navegador` e a janela do Chrome em modo app; fechar a janela encerra o editor em até 3 s.
+Sem o binário a VM recusa o `use` do wrapper na compilação (`binary ... not found — run 'noxy --sync'`), então o fallback se testa com um binário que falha ao subir:
+
+Run: `B=noxy_libs/github_com/estevaofon/noxy_webview/bin/noxy-plugin-webview-linux-amd64; mv $B $B.real; printf '#!/bin/sh\nexit 127\n' > $B; chmod +x $B; noxy editor.nx . ; mv $B.real $B`
+Esperado: `janela pela extensao indisponivel: ... extension 'webview' trapped: handshake: process exited before replying; abrindo no navegador` e a janela do Chrome em modo app; fechar a janela encerra o editor em até 3 s.
 
 - [ ] **Passo 5: `tests/MANUAL.md` conferido**
 
