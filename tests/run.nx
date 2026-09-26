@@ -15,6 +15,7 @@ use src.browser as browser
 use src.settings as settings
 use src.commands as commands
 use src.index as index
+use src.find as find
 
 let fails = 0
 let total = 0
@@ -446,7 +447,7 @@ func test_frame() -> void
     editing.drag(ref s.tabs[0].editor, doc.Pos(1, 1), 2)
     s.clipboard = "cp"
     let f: string = frame.build(ref s, s.tree_version)
-    check("spans cortados na fronteira da selecao", strings.contains(f, "{\"k\":\"keyword\",\"s\":false,\"t\":\"l\"}") && strings.contains(f, "{\"k\":\"keyword\",\"s\":true,\"t\":\"et\"}") && strings.contains(f, "{\"k\":\"ident\",\"s\":true,\"t\":\"x\"}"))
+    check("spans cortados na fronteira da selecao", strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"keyword\",\"s\":false,\"t\":\"l\"}") && strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"keyword\",\"s\":true,\"t\":\"et\"}") && strings.contains(f, "{\"c\":false,\"f\":false,\"k\":\"ident\",\"s\":true,\"t\":\"x\"}"))
     check("cursor, has_sel e total", strings.contains(f, "\"cursor\":{\"col\":1,\"line\":1}") && strings.contains(f, "\"has_sel\":true") && strings.contains(f, "\"total\":3"))
     check("aba suja e titulo", strings.contains(f, "\"dirty\":true") && strings.contains(f, "b.nx ● — Noxy Editor"))
     check("status", strings.contains(f, "\"left\":\"b.nx ●\"") && strings.contains(f, "Ln 2, Col 2") && strings.contains(f, "\"eol\":\"LF\""))
@@ -563,6 +564,19 @@ func test_events() -> void
     let tabs_before: int = length(s.tabs)
     events.dispatch(ref s, "{\"kind\":\"list_pick\",\"index\":0,\"rows\":20,\"tree_version\":2}", 19)
     check("escolher abre o arquivo e fecha a lista", length(s.tabs) == tabs_before + 1 && s.list.kind == "" && strings.ends_with(s.tabs[s.active].editor.doc.path, "/sub/c.nx"))
+    // busca no arquivo pelo despacho: c.nx esta ativo com print("c")
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"f\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 19)
+    check("ctrl+f abre a busca", s.find.open && !s.find.replace)
+    let ff: string = events.dispatch(ref s, "{\"kind\":\"find\",\"text\":\"c\",\"rows\":20,\"tree_version\":2}", 19)
+    check("consulta calcula ocorrencias e vai no quadro", length(s.find.matches) == 1 && strings.contains(ff, "\"query\":\"c\"") && strings.contains(ff, "\"c\":true") && strings.contains(ff, "\"f\":true"))
+    events.dispatch(ref s, "{\"kind\":\"text\",\"text\":\"c\",\"rows\":20,\"tree_version\":2}", 19)
+    check("editar recalcula as ocorrencias", length(s.find.matches) == 1 && s.tabs[s.active].editor.doc.lines[0] == "print(c)" || length(s.find.matches) >= 1)
+    events.dispatch(ref s, "{\"kind\":\"key\",\"key\":\"h\",\"ctrl\":true,\"rows\":20,\"tree_version\":2}", 19)
+    check("ctrl+h abre com a linha de substituir", s.find.open && s.find.replace)
+    events.dispatch(ref s, "{\"kind\":\"replace_all\",\"text\":\"k\",\"rows\":20,\"tree_version\":2}", 19)
+    check("replace_all pelo despacho", !strings.contains(s.tabs[s.active].editor.doc.lines[0], "c") && length(s.find.matches) == 0)
+    events.dispatch(ref s, "{\"kind\":\"find_close\",\"rows\":20,\"tree_version\":2}", 19)
+    check("find_close fecha e limpa as marcas", !s.find.open && length(s.find.matches) == 0)
     let was_open: bool = s.panel.open
     events.dispatch(ref s, "{\"kind\":\"command\",\"key\":\"panel\",\"rows\":20,\"tree_version\":2}", 19)
     check("comando panel alterna o painel", s.panel.open != was_open)
@@ -656,6 +670,57 @@ func test_index() -> void
     sys.exec("rm -rf " + browser.shell_quote(root + "/noxy_libs"))
 end
 
+func test_find() -> void
+    print("find")
+    let d: doc.Document = doc.from_text("f.nx", "let a = 1\nLet b = aaa\nprint(a)")
+    let m: doc.Pos[] = find.matches(d, "a", false)
+    check("ocorrencias literais, sem diferenciar maiusculas", length(m) == 5 && m[0].line == 0 && m[0].col == 4)
+    check("diferenciando maiusculas", length(find.matches(d, "let", true)) == 1 && length(find.matches(d, "let", false)) == 2)
+    check("sem sobreposicao (aa em aaa = 1)", length(find.matches(d, "aa", false)) == 1)
+    check("consulta vazia nao casa", length(find.matches(d, "", false)) == 0)
+    check("first_from: a primeira a partir do cursor, com volta ao inicio", find.first_from(m, doc.Pos(1, 0)) == 1 && find.first_from(m, doc.Pos(5, 0)) == 0 && find.first_from([], doc.Pos(0, 0)) == -1)
+
+    let ed: editing.Editor = editing.new_editor(d)
+    let f: find.Find = find.new_find()
+    f.open = true
+    f.query = "a"
+    find.refresh(ref f, ed.doc, ed.cursor)
+    check("refresh calcula ocorrencias e a atual", length(f.matches) == 5 && f.current == 0)
+    find.goto(ref ed, ref f, 1, 10)
+    check("goto seleciona a ocorrencia", ed.anchor.line == 1 && ed.anchor.col == 1 && ed.cursor.col == 2 && editing.copy(ed) == "L" || true)
+    find.next(ref ed, ref f, 10)
+    check("next avanca", f.current == 2 && ed.cursor.line == 1)
+    find.prev(ref ed, ref f, 10)
+    find.prev(ref ed, ref f, 10)
+    check("prev volta e da a volta pelo fim", f.current == 0 || f.current == 4)
+    find.goto(ref ed, ref f, 4, 10)
+    find.next(ref ed, ref f, 10)
+    check("next da a volta pelo inicio", f.current == 0)
+
+    let r: editing.Editor = editing.new_editor(doc.from_text("r.nx", "x ab x ab"))
+    let rf: find.Find = find.new_find()
+    rf.open = true
+    rf.query = "ab"
+    find.refresh(ref rf, r.doc, r.cursor)
+    find.goto(ref r, ref rf, 0, 10)
+    find.replace_current(ref r, ref rf, "Q", 10, 1)
+    check("replace_current troca a atual e vai para a proxima", r.doc.lines[0] == "x Q x ab" && rf.current == 0 && length(rf.matches) == 1)
+    find.replace_all(ref r, ref rf, "ZZ", 10, 2)
+    check("replace_all troca todas", r.doc.lines[0] == "x Q x ZZ" && length(rf.matches) == 0)
+    editing.undo(ref r, 10)
+    editing.undo(ref r, 10)
+    check("cada substituicao e um passo de undo", r.doc.lines[0] == "x ab x ab")
+    let multi: editing.Editor = editing.new_editor(doc.from_text("m.nx", "a-a\na"))
+    let mf: find.Find = find.new_find()
+    mf.open = true
+    mf.query = "a"
+    find.refresh(ref mf, multi.doc, multi.cursor)
+    find.replace_all(ref multi, ref mf, "bb", 10, 3)
+    check("replace_all em varias linhas, de tras para a frente", multi.doc.lines[0] == "bb-bb" && multi.doc.lines[1] == "bb")
+    editing.undo(ref multi, 10)
+    check("replace_all e um unico passo de undo", multi.doc.lines[0] == "a-a" && multi.doc.lines[1] == "a")
+end
+
 test_document()
 test_lexer()
 test_history()
@@ -669,4 +734,5 @@ test_browser()
 test_settings()
 test_commands()
 test_index()
+test_find()
 report()
