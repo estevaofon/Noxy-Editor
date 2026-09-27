@@ -15,11 +15,6 @@ mouse.
   ou mais novo.
 - Git, para clonar (e para o editor mostrar a branch e o status dos
   arquivos).
-- Para a janela nativa: no Linux, `libwebkit2gtk-4.1` (já vem nos desktops
-  GNOME); no Windows, o runtime WebView2 (incluído no Windows 11); no macOS,
-  nada além do sistema. Sem ela, o editor abre num navegador em modo app
-  (Chrome, Chromium, Brave ou Edge) ou no navegador padrão.
-- Para o terminal integrado no Windows: Windows 10 1809 ou mais novo.
 
 ## Instalar
 
