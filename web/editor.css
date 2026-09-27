@@ -47,6 +47,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); f
 .hidden { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
+/* barras de rolagem no tom do tema: sem isto o WebView2 (Windows) desenha a
+   barra nativa clara, com setas, destoando do fundo escuro */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--sel); }
+::-webkit-scrollbar-button { display: none; }
+
 /* a largura da barra lateral vem de --side-w (o JS grava o que o usuario
    arrastou); o min() com 60vw a mantem na janela quando ela encolhe */
 #app { --side-col: min(var(--side-w, 260px), 60vw); position: relative; display: grid; grid-template-columns: var(--side-col) 1fr; height: 100vh; overflow: hidden; }
