@@ -47,22 +47,37 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); f
 .hidden { display: none !important; }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-#app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; }
+/* a largura da barra lateral vem de --side-w (o JS grava o que o usuario
+   arrastou); o min() com 60vw a mantem na janela quando ela encolhe */
+#app { --side-col: min(var(--side-w, 260px), 60vw); position: relative; display: grid; grid-template-columns: var(--side-col) 1fr; height: 100vh; overflow: hidden; }
+/* divisor da barra lateral: faixa fina sobre a borda direita, fora da grade */
+#sidebar-resize { position: absolute; top: 0; bottom: 0; left: calc(var(--side-col) - 3px); width: 6px; z-index: 5; cursor: ew-resize; touch-action: none; }
+#sidebar-resize:hover, #app.side-resizing #sidebar-resize { background: var(--accent); }
+#app.side-resizing { user-select: none; }
 
 /* barra lateral */
 #sidebar { background: var(--bg-side); border-right: 1px solid var(--border); overflow: auto; user-select: none; }
 #root-name { padding: 10px 14px 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
 .node { display: flex; align-items: center; height: 24px; padding-right: 8px; white-space: nowrap; cursor: pointer; }
 .node:hover { background: var(--bg-hover); }
-.node .chev { width: 16px; text-align: center; color: var(--fg-dim); font-size: 10px; }
+/* a seta nao encolhe (nome longo tirava a largura dela e saia do alinhamento);
+   o nome que nao cabe e cortado com reticencias */
+.node .chev { flex: none; width: 16px; text-align: center; color: var(--fg-dim); font-size: 10px; }
+.node .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .node.dir .name { color: var(--fg); }
 .node.file .name { color: var(--fg); opacity: .9; }
 
 /* area principal: a altura da grade e explicita e a linha do painel de
    saida vem da variavel --output-h (0 quando fechado). Com a linha do
    painel em "auto" o WebKitGTK dimensionava a linha 1fr pelo conteudo e o
-   painel caia para fora da janela. */
+   painel caia para fora da janela. Cada filho tem a sua linha fixa: com o
+   painel escondido (display: none) ele sai da grade e, pelo posicionamento
+   automatico, a barra de status caia na linha de 0 px do painel. */
 #main { display: grid; grid-template-rows: 36px minmax(0, 1fr) var(--output-h, 0px) 24px; height: 100vh; min-width: 0; min-height: 0; }
+#tabbar { grid-row: 1; }
+#editor-row { grid-row: 2; }
+#output { grid-row: 3; }
+#status { grid-row: 4; }
 #tabbar { display: flex; align-items: stretch; background: var(--bg-bar); border-bottom: 1px solid var(--border); }
 #tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
 .tab { display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; border-right: 1px solid var(--border); color: var(--fg-dim); cursor: pointer; white-space: nowrap; }

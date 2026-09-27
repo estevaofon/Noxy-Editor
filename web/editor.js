@@ -8,6 +8,7 @@
   const PAGE_ID = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
   const $ = (id) => document.getElementById(id);
   const els = {
+    app: $("app"), sidebar: $("sidebar"), sideResize: $("sidebar-resize"),
     rootName: $("root-name"), tree: $("tree"), tabs: $("tabs"), runBtn: $("run-btn"),
     editor: $("editor"), minimap: $("minimap"), gutter: $("gutter"), text: $("text"), cursor: $("cursor"), welcome: $("welcome"),
     main: $("main"), output: $("output"), outputText: $("output-text"), outputClose: $("output-close"), outputResize: $("output-resize"), outputHead: $("output-head"),
@@ -710,6 +711,41 @@
     el.addEventListener("pointerup", endResize);
     el.addEventListener("pointercancel", endResize);
   }
+  // barra lateral: o divisor na borda direita arrasta a largura (160 px a 60%
+  // da janela), com a mesma captura do ponteiro; a largura e lembrada como a
+  // altura do painel. Ao carregar nao limita pela janela: ela pode nem ter
+  // tamanho ainda, e o min() do CSS ja segura a barra dentro dela
+  const SIDE_W_KEY = "noxy-editor.side-w";
+  let sideResizing = null;
+  function setSideWidth(w) { els.app.style.setProperty("--side-w", w + "px"); }
+  try {
+    const saved = parseInt(localStorage.getItem(SIDE_W_KEY), 10);
+    if (saved >= 160) setSideWidth(saved);
+  } catch (err) { /* sem storage: largura padrao */ }
+  function endSideResize() {
+    if (!sideResizing) return;
+    try { els.sideResize.releasePointerCapture(sideResizing.id); } catch (err) { /* ja liberado */ }
+    const w = sideResizing.cur;
+    sideResizing = null;
+    els.app.classList.remove("side-resizing");
+    try { localStorage.setItem(SIDE_W_KEY, String(w)); } catch (err) { /* sem storage: so nao lembra */ }
+  }
+  els.sideResize.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    // parte da largura de verdade: a guardada pode estar cortada pelo min() do CSS
+    const w = Math.round(els.sidebar.getBoundingClientRect().width);
+    sideResizing = { x: e.clientX, w, cur: w, id: e.pointerId };
+    try { els.sideResize.setPointerCapture(e.pointerId); } catch (err) { /* sem captura: o movimento ainda chega enquanto o ponteiro estiver sobre o divisor */ }
+    els.app.classList.add("side-resizing");
+  });
+  els.sideResize.addEventListener("pointermove", (e) => {
+    if (!sideResizing) return;
+    sideResizing.cur = Math.max(160, Math.min(Math.round(sideResizing.w + e.clientX - sideResizing.x), Math.floor(innerWidth * 0.6)));
+    setSideWidth(sideResizing.cur);
+  });
+  els.sideResize.addEventListener("pointerup", endSideResize);
+  els.sideResize.addEventListener("pointercancel", endSideResize);
   new ResizeObserver(() => {
     const r = rowsNow();
     if (r !== rows) { rows = r; send({ kind: "poll" }); }
