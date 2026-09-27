@@ -11,11 +11,11 @@ provam. Conferir a cada release, com a extensão instalada:
 - [ ] Linha mais larga que a janela rola horizontalmente e o cursor acompanha.
 - [ ] Ctrl+Q com aba suja abre o modal; "Salvar tudo" grava e fecha a janela; o processo `noxy` termina (`pgrep noxy` vazio).
 - [ ] Fechar pelo X encerra o processo sem órfãos (`pgrep -f noxy-plugin-webview` vazio).
-- [ ] Com a extensão incapaz de abrir (troque `bin/noxy-plugin-webview-linux-amd64` no package por um script `#!/bin/sh` que faz `exit 127`, guardando o binário real), o editor avisa `janela pela extensao indisponivel` no terminal e abre no navegador em modo app; fechar a janela do navegador encerra o `noxy` em até 3 s. Restaure o binário depois.
+- [ ] Com a extensão recusando a janela (troque a largura `1200` por `0` no `webview.open` de `src/launch.nx`), o editor avisa `janela pela extensao indisponivel` no terminal e abre no navegador em modo app; fechar a janela do navegador encerra o `noxy` em uns 3 s. Desfaça a troca depois. Trocar ou tirar o binário da extensão não serve: o `use` confere o binário contra o `noxy.sum` e o editor nem abre (achado 7 de `docs/ACHADOS.md`).
 - [ ] `NOXY_WEBVIEW_DEBUG=1 noxy editor.nx .` abre com o inspetor do WebKit disponível.
 - [ ] Terminal (Ctrl+`): `vim` abre, Escape troca de modo, `:q` sai; `top` desenha e atualiza; Ctrl+C interrompe um `sleep 100`.
 - [ ] Redimensionar o painel com `top` aberto: o `top` redesenha no tamanho novo.
-- [ ] Fechar a janela pelo X com `sleep 1000` no terminal e um programa rodando pelo F5: `pgrep -f "sleep 1000"` e `pgrep -f "exec noxy"` vazios.
+- [ ] Fechar a janela pelo X com `sleep 1000` no terminal e um programa rodando pelo F5: `pgrep -f "sleep 1000"` vazio e `pgrep -af noxy` sem o arquivo do F5.
 - [ ] Editar sem salvar, fechar pelo X, abrir a mesma pasta: a aba volta suja, com o texto.
 - [ ] Trocar o tema pela paleta, fechar e abrir: o tema continua.
 - [ ] Num repositório, salvar um arquivo: ele fica âmbar na árvore e na aba; a branch aparece na status.
@@ -36,4 +36,4 @@ Com o `noxy` no PATH de um prompt (cmd ou PowerShell), sem Git Bash nem WSL:
 - [ ] Trocar o tema e reabrir: continua (`%APPDATA%\noxy-editor\settings.json`).
 - [ ] Numa pasta com espaço e acento no caminho dentro de um repositório: a branch aparece na status e um arquivo salvo fica âmbar.
 - [ ] Fechar pelo X encerra o `noxy.exe` e o `noxy-plugin-webview-windows-amd64.exe`.
-- [ ] Com o binário da extensão renomeado (guarde o original), o editor avisa `janela pela extensao indisponivel` e abre no Chrome ou Edge em modo app; sem eles, no navegador padrão.
+- [ ] Com o WebView2 quebrado (`set WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=C:\nao\existe` no prompt antes de abrir o editor), depois de uns 30 s o editor avisa `janela pela extensao indisponivel` e abre no Chrome ou Edge em modo app; fechar essa janela encerra o `noxy.exe` em uns 3 s; sem Chrome nem Edge, abre no navegador padrão. Feche o prompt depois. Renomear o binário da extensão não serve: o editor nem abre (achado 7 de `docs/ACHADOS.md`).
