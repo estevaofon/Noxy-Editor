@@ -1,82 +1,57 @@
 # Noxy Editor
 
 Um editor de código para arquivos Noxy, escrito em
-[Noxy](https://github.com/estevaofon/noxy). Buffer, cursor, seleção, undo,
-lexer, abas, árvore de arquivos e execução vivem no Noxy; o navegador só pinta
-o que o Noxy manda e encaminha teclado e mouse. É um projeto de experimentação
-da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.md).
+[Noxy](https://github.com/estevaofon/noxy): abas, árvore de arquivos, busca
+no arquivo e na pasta, F5 com a saída ao vivo, terminal integrado, git na
+árvore, minimap e temas. Buffer, cursor, seleção, undo, lexer e execução
+vivem no Noxy; a janela só pinta o que o Noxy manda e encaminha teclado e
+mouse.
 
 <img width="1721" height="1186" alt="image" src="https://github.com/user-attachments/assets/312933a5-0ad3-4e65-a5b6-af41114f5b54" />
 
-## Rodar
+## Requisitos
+
+- [Noxy](https://github.com/estevaofon/noxy) v0.26.0, instalado com Go 1.25
+  ou mais novo.
+- Git, para clonar (e para o editor mostrar a branch e o status dos
+  arquivos).
+
+## Instalar
+
+    go install github.com/estevaofon/noxy/cmd/noxy@v0.26.0
+    git clone https://github.com/estevaofon/Noxy-Editor
+    cd Noxy-Editor
+    noxy --sync
+
+O `go install` põe o `noxy` em `$(go env GOPATH)/bin`, que precisa estar no
+PATH. O `noxy --sync` baixa as extensões de janela
+([noxy_webview](https://github.com/estevaofon/noxy_webview)) e de terminal
+([noxy_pty](https://github.com/estevaofon/noxy_pty)) da sua plataforma para
+`noxy_libs/` e confere os hashes gravados no `noxy.sum`. Sem esse passo o
+editor não abre.
+
+## Rodar com o Noxy
 
     noxy editor.nx [pasta | arquivo]
 
-Sem argumento abre o diretório atual. Um arquivo abre a pasta dele com o
-arquivo numa aba. Roda no Linux, no macOS e no Windows (`noxy editor.nx
-C:\projeto`; por dentro o editor usa `/` em todas as plataformas). A janela é a extensão
-[noxy_webview](https://github.com/estevaofon/noxy_webview), instalada com
-`noxy --sync` (veja "Extensão de janela"); se ela não conseguir abrir a
-janela nesta máquina, o editor abre num navegador em modo app (Chrome,
-Chromium, Brave ou Edge) ou no navegador padrão. Com `NOXY_EDITOR_NO_WINDOW=1` o editor
-só imprime a URL, para desenvolver o cliente ou rodar o smoke.
+Sem argumento abre o diretório atual; um arquivo abre a pasta dele com o
+arquivo numa aba. No Windows: `noxy editor.nx C:\projeto` (por dentro o
+editor usa `/` em todas as plataformas).
 
-## Distribuir
+## Rodar como executável
 
     noxy build editor.nx -o dist/noxy-editor
+    dist/noxy-editor [pasta | arquivo]
 
-gera um executável único (Linux e Windows; macOS experimental) que roda sem
-`noxy` nem `noxy_libs` na máquina: `dist/noxy-editor pasta`. Ele leva o
-`web/` (linha `include web` do `noxy.mod`), os plugins `noxy_webview` e
-`noxy_pty` desta plataforma e o fonte do editor — legível com `unzip`. O F5
-roda os arquivos com o próprio executável (`sys.executable()` +
-`NOXY_INTERPRETER=1` no processo filho); o terminal integrado **não** ganha
-um `noxy` no PATH, porque o app não instala nada. Detalhes em
-`docs/BUILD.md` do noxy.
+O `noxy build` gera um executável único, que roda sem `noxy` nem
+`noxy_libs` na máquina: ele leva o `web/` (linha `include web` do
+`noxy.mod`), as extensões da plataforma e o fonte do editor. Gere na
+plataforma onde ele vai rodar: Linux ou Windows (lá sai
+`dist\noxy-editor.exe`); no macOS é experimental. O F5 roda os arquivos com
+o próprio executável; o terminal integrado não ganha um `noxy` no PATH,
+porque o app não instala nada. Detalhes em `docs/BUILD.md` do Noxy.
 
-## Extensão de janela
-
-A janela nativa é o package [`noxy_webview`](https://github.com/estevaofon/noxy_webview),
-que o editor importa em `src/launch.nx`. O `noxy.mod` já o exige
-(`require github.com/estevaofon/noxy_webview v0.1.0`), então num clone novo
-basta:
-
-    noxy --sync
-
-Isso baixa o binário da sua plataforma (Linux, Windows, macOS Intel e Apple
-Silicon) para `noxy_libs/.../noxy_webview/bin/` e confere os hashes gravados
-em `noxy.sum`. Sem esse binário a VM recusa o `use` na compilação e o editor
-não abre (achado 7 em `docs/ACHADOS.md`). Em runtime, o Linux precisa de
-`libwebkit2gtk-4.1`, presente em desktops GNOME.
-
-Se a extensão estiver instalada mas não conseguir abrir a janela nesta máquina
-(sem `libwebkit2gtk-4.1`, por exemplo), o editor abre num navegador em modo
-app. Nesse modo a URL com o token não vai na linha de comando: o editor grava
-uma página de redirecionamento num diretório temporário só seu e passa o
-caminho dela ao navegador.
-
-Para mexer na extensão em vez de usar o release, clone-a ao lado deste
-repositório, compile e linke o checkout no lugar do package instalado:
-
-```bash
-git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
-sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
-(cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
-rm -rf noxy_libs/github_com/estevaofon/noxy_webview
-ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
-```
-
-A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
-
-## Extensão de terminal
-
-O terminal (Ctrl+`) é o package [`noxy_pty`](https://github.com/estevaofon/noxy_pty),
-importado em `src/term.nx` e instalado pelo mesmo `noxy --sync`. É Go puro,
-sem dependências de sistema: pty no Linux e no macOS, pseudoconsole
-(ConPTY) no Windows, onde abre o `cmd.exe` do `COMSPEC` e precisa do Windows
-10 1809 ou mais novo.
-
-## Atalhos
+## Usar
 
 | Tecla | Ação |
 |---|---|
@@ -129,7 +104,12 @@ execução e pelo comando "Git: atualizar".
 Arquivos com `\r\n` continuam com `\r\n` ao salvar; a barra de status
 mostra LF ou CRLF.
 
-## Como está organizado
+O terminal abre o `sh` no Linux e no macOS e o `cmd.exe` do `COMSPEC` no
+Windows (mude o `COMSPEC` para usar outro shell).
+
+## Desenvolvimento
+
+### Como está organizado
 
 A routine principal de `editor.nx` é a dona de todo o estado. O servidor HTTP
 da stdlib (`src/server`) roda cada requisição numa routine própria e só
@@ -161,7 +141,34 @@ empacota o evento com um canal de resposta; o dono aplica e responde o quadro.
 
 Design e plano em `docs/superpowers/`.
 
-## Testes
+### Extensões
+
+A janela é o package [noxy_webview](https://github.com/estevaofon/noxy_webview)
+(WebKitGTK no Linux, WebView2 no Windows, WKWebView no macOS), importado em
+`src/launch.nx`; o terminal é o [noxy_pty](https://github.com/estevaofon/noxy_pty),
+em Go puro (pty no Linux e no macOS, ConPTY no Windows), importado em
+`src/term.nx`. Os dois vêm do `noxy.mod` e são instalados pelo `noxy --sync`.
+
+Quando a janela não abre, o editor usa o navegador em modo app sem pôr a URL
+com o token na linha de comando: grava uma página de redirecionamento num
+diretório temporário só seu e passa o caminho dela ao navegador. Com
+`NOXY_EDITOR_NO_WINDOW=1` o editor só imprime a URL, para desenvolver o
+cliente ou rodar os testes do navegador.
+
+Para mexer na extensão em vez de usar o release, clone-a ao lado deste
+repositório, compile e linke o checkout no lugar do package instalado:
+
+```bash
+git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
+(cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
+rm -rf noxy_libs/github_com/estevaofon/noxy_webview
+ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
+```
+
+A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
+
+### Testes
 
     noxy tests/run.nx            # o núcleo inteiro, sem navegador
     noxy tests/protocol.nx       # servidor + cliente HTTP in-process
@@ -173,16 +180,3 @@ Windows, com um shell de verdade no terminal (`sh` e `cmd.exe`). Os testes
 usam cache e configuração próprios em `tests/tmp`, nunca os seus.
 
 `tests/MANUAL.md` lista o que só se confere à mão.
-
-## Limitações
-
-Busca sem regex; um terminal por vez; git só para ver (commit, pull e push
-pelo terminal); o programa executado recebe `/dev/null` (`nul` no Windows)
-como entrada (para programas interativos, use o terminal).
-
-No Windows: Parar termina a árvore de processos na hora (o job do
-programa), sem os 2 s de TERM do Linux; um `%` no nome da raiz ou do
-arquivo pode quebrar o F5 e o git (o `cmd` expande `%VAR%` mesmo entre
-aspas); e o terminal é o `cmd.exe` (mude o `COMSPEC` para outro shell). O
-Linux e o macOS usam `sh`; o Windows usa `cmd`, sem depender de Git Bash ou
-WSL.
