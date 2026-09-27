@@ -105,7 +105,9 @@ sem dependências de sistema: pty no Linux e no macOS, pseudoconsole
 Mouse: clique posiciona, arraste seleciona, duplo clique seleciona a palavra,
 clique no gutter seleciona a linha, roda rola, clique ou arraste no minimap
 rola. O painel inferior tem as abas Saída, Busca e Terminal; arraste a barra
-dele (fora das abas) ou o divisor acima para redimensionar.
+dele (fora das abas) ou o divisor acima para redimensionar. A árvore de
+arquivos também: arraste a borda direita dela (de 160 px a 60% da janela).
+A altura do painel e a largura da árvore ficam guardadas no navegador.
 
 **Alterações não salvas não se perdem.** Cada aba suja tem uma cópia em
 `~/.cache/noxy-editor/recovery/` (`%LOCALAPPDATA%\noxy-editor\recovery\` no
@@ -164,7 +166,7 @@ Design e plano em `docs/superpowers/`.
     noxy tests/run.nx            # o núcleo inteiro, sem navegador
     noxy tests/protocol.nx       # servidor + cliente HTTP in-process
     python3 tests/web_smoke.py   # o cliente web num Chrome headless (precisa de google-chrome)
-    GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout, arraste do painel e terminal no WebKitGTK real (PyGObject; abre uma janela)
+    GDK_BACKEND=x11 python3 tests/webkit_smoke.py   # layout, arraste do painel e da árvore e terminal no WebKitGTK real (PyGObject; abre uma janela)
 
 A CI (`.github/workflows/ci.yml`) roda as duas suítes Noxy no Ubuntu e no
 Windows, com um shell de verdade no terminal (`sh` e `cmd.exe`). Os testes

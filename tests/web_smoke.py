@@ -15,6 +15,8 @@ open(os.path.join(demo, "exemplo.nx"), "w").write('use sys\n// um exemplo para o
 open(os.path.join(demo, "sem_fim.nx"), "w").write('use sys\nlet i = 0\nwhile true do\n    print(f"volta {i}")\n    i = i + 1\n    sys.sleep(100)\nend\n')
 open(os.path.join(demo, "longo.nx"), "w").write("".join(f"let v{i} = {i}\n" for i in range(300)))
 open(os.path.join(demo, "notas.txt"), "w").write("texto simples\n")
+# nome maior que a barra lateral: fica alinhado com os outros e cortado com reticencias
+open(os.path.join(demo, "zz_um_nome_de_arquivo_comprido_demais_para_a_barra.nx"), "w").write("")
 open(os.path.join(demo, "src", "util.nx"), "w").write("let x = 1\n")
 # a demo e um repositorio git: notas.txt fica modificado depois do commit
 import shutil as _shg
@@ -101,11 +103,42 @@ def cursor_in_view():
 
 def mouse(kind, x, y, button="left", clicks=1, mods=0):
     ws.call("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y, "button": button, "clickCount": clicks, "modifiers": mods})
+# a barra de status inteira no rodape da janela, com ou sem o painel de saida
+def status_at_bottom():
+    return ev("(() => { const r = document.getElementById('status').getBoundingClientRect(); return r.height === 24 && Math.abs(r.bottom - innerHeight) < 1; })()")
 
 ws.call("Page.navigate", {"url": url}); settle(1500)
-check("arvore renderizada", ev("document.querySelectorAll('#tree .node').length") == 5)
+check("arvore renderizada", ev("document.querySelectorAll('#tree .node').length") == 6)
+check("nomes da arvore alinhados a esquerda, o longo cortado dentro da barra", ev("""(() => {
+  const side = document.getElementById('sidebar'), names = Array.from(document.querySelectorAll('#tree .node.file .name'));
+  const longo = names.find(n => n.textContent.startsWith('zz_')), left = names[0].getBoundingClientRect().left;
+  return names.every(n => Math.abs(n.getBoundingClientRect().left - left) < 0.5) && longo.scrollWidth > longo.clientWidth
+    && longo.getBoundingClientRect().right <= side.getBoundingClientRect().right && side.scrollWidth <= side.clientWidth;
+})()"""))
+# barra lateral: divisor arrastavel na borda direita, entre 160 px e 60% da
+# janela, largura lembrada no localStorage
+def side_w(): return ev("document.getElementById('sidebar').getBoundingClientRect().width")
+def side_drag(dx):
+    g = ev("(() => { const g = document.getElementById('sidebar-resize'); if (!g) return null; const r = g.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+    if g is None: return False
+    mouse("mousePressed", g[0], g[1]); mouse("mouseMoved", g[0] + dx, g[1]); settle(); mouse("mouseReleased", g[0] + dx, g[1]); settle()
+    return True
+w0 = side_w()
+check("barra lateral abre com 260 px (%.0f)" % w0, abs(w0 - 260) < 1)
+check("divisor da barra lateral existe", side_drag(150))
+w1 = side_w()
+check("arrastar o divisor para a direita alarga a barra (%.0f -> %.0f px)" % (w0, w1), abs((w1 - w0) - 150) < 2)
+check("a area do editor comeca onde a barra termina", abs(ev("document.getElementById('main').getBoundingClientRect().left") - w1) < 1)
+check("largura lembrada no localStorage", ev("localStorage.getItem('noxy-editor.side-w')") == str(round(w1)))
+side_drag(-1000)
+check("a barra nao fica menor que 160 px (%.0f)" % side_w(), abs(side_w() - 160) < 1)
+side_drag(2000)
+check("a barra nao passa de 60%% da janela (%.0f de %.0f)" % (side_w(), ev("innerWidth")), abs(side_w() - ev("Math.floor(innerWidth * 0.6)")) < 1)
+side_drag(300 - side_w())
+check("nomes continuam alinhados com a barra mais larga", ev("(() => { const n = Array.from(document.querySelectorAll('#tree .node.file .name')); return n.every(e => Math.abs(e.getBoundingClientRect().left - n[0].getBoundingClientRect().left) < 0.5); })()"))
 check("nome da raiz", ev("document.getElementById('root-name').textContent") == "web")
 check("titulo inicial", ev("document.title") == "Noxy Editor")
+check("status inteira no rodape com o painel fechado", status_at_bottom())
 settle(800)
 check("git: branch na barra de status", "demo-branch" in ev("document.getElementById('status-git').textContent"))
 check("git: arquivo modificado marcado na arvore", ev("Array.from(document.querySelectorAll('#tree .node')).find(n => n.textContent.includes('notas.txt')).classList.contains('git-M')"))
@@ -245,8 +278,10 @@ key("z", mods=2)
 check("ctrl+z desfaz a substituicao inteira", ev("document.querySelector('.line[data-n=\"6\"]').textContent").startswith("print("))
 key("j", mods=2)
 check("ctrl+j esconde o painel", ev("document.getElementById('output').classList.contains('hidden')"))
+check("status inteira no rodape depois do ctrl+j", status_at_bottom())
 key("j", mods=2)
 check("ctrl+j de novo mostra o painel", not ev("document.getElementById('output').classList.contains('hidden')"))
+check("status inteira no rodape com o painel aberto", status_at_bottom())
 check("reabrir o painel nao tira o foco do editor", ev("document.activeElement.id") == "input")
 # digitar de novo para sujar, entao fechar pelo x: modal
 key("End"); insert("!")
@@ -271,9 +306,10 @@ open(helper, "w").write("use src.browser as browser\nuse sys\nprint(browser.writ
 page = subprocess.run(["noxy", helper, url], capture_output=True, text=True).stdout.strip()
 check("write_redirect devolve um caminho", page.startswith("/"))
 ws.call("Page.navigate", {"url": "file://" + page}); settle(2000)
-check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 5)
+check("pagina de redirecionamento leva ao editor", ev("location.href").startswith(url.split("?")[0]) and ev("document.querySelectorAll('#tree .node').length") == 6)
+check("depois do reload a barra lateral volta com a largura arrastada (%.0f)" % side_w(), abs(side_w() - 300) < 1)
 time.sleep(3.5)
-check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 5)
+check("editor continua vivo 3 s depois do reload", editor.poll() is None and ev("document.querySelectorAll('#tree .node').length") == 6)
 # terminal: ctrl+` abre um shell de verdade no painel, com foco
 key("`", mods=2); settle(1500)
 check("ctrl+` abre a aba Terminal com o xterm", ev("document.querySelector('#panel-tabs .ptab.active').dataset.tab") == "terminal" and ev("!!document.querySelector('#term-view .xterm')"))

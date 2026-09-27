@@ -52,16 +52,18 @@ def button(down, x, y):
     ev.button.button = 1; ev.button.state = Gdk.ModifierType(0) if down else Gdk.ModifierType.BUTTON1_MASK; Gtk.main_do_event(ev)
 def click(x, y, done):
     move(x, y, False); later(60, lambda: button(True, x, y)); later(120, lambda: button(False, x, y)); later(200, done)
-def drag(x, y, dy, done):
+def drag(x, y, dy, done, dx=0):
     move(x, y, False); later(60, lambda: button(True, x, y))
     for i, f in enumerate([0.2, 0.4, 0.6, 0.8, 1.0]):
-        later(120 + i * 50, (lambda ff: (lambda: move(x, y + dy * ff, True)))(f))
-    later(420, lambda: button(False, x, y + dy)); later(800, done)
+        later(120 + i * 50, (lambda ff: (lambda: move(x + dx * ff, y + dy * ff, True)))(f))
+    later(420, lambda: button(False, x + dx, y + dy)); later(800, done)
 
-LAYOUT = "JSON.stringify({inner: innerHeight, editorH: document.getElementById('editor').getBoundingClientRect().height, rows: document.querySelectorAll('#text .line').length, outH: document.getElementById('output').getBoundingClientRect().height, outBottom: document.getElementById('output').getBoundingClientRect().bottom, statusBottom: document.getElementById('status').getBoundingClientRect().bottom, hidden: document.getElementById('output').classList.contains('hidden'), sw: document.getElementById('editor').scrollWidth, cw: document.getElementById('editor').clientWidth})"
+LAYOUT = "JSON.stringify({inner: innerHeight, editorH: document.getElementById('editor').getBoundingClientRect().height, rows: document.querySelectorAll('#text .line').length, outH: document.getElementById('output').getBoundingClientRect().height, outBottom: document.getElementById('output').getBoundingClientRect().bottom, statusBottom: document.getElementById('status').getBoundingClientRect().bottom, statusH: document.getElementById('status').getBoundingClientRect().height, hidden: document.getElementById('output').classList.contains('hidden'), sw: document.getElementById('editor').scrollWidth, cw: document.getElementById('editor').clientWidth})"
 def center(sel): return f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return JSON.stringify([r.left + Math.min(60, r.width / 2), r.top + r.height / 2]); }})()"
 st = {}
-def fits(l): return l["statusBottom"] <= l["inner"] + 0.5 and l["outBottom"] <= l["inner"] + 0.5 and abs(l["editorH"] - (l["inner"] - 36 - l["outH"] - 24)) < 1.5
+# a barra de status inteira colada no rodape, com ou sem o painel
+def status_ok(l): return l["statusH"] == 24 and abs(l["statusBottom"] - l["inner"]) < 0.5
+def fits(l): return status_ok(l) and l["outBottom"] <= l["inner"] + 0.5 and abs(l["editorH"] - (l["inner"] - 36 - l["outH"] - 24)) < 1.5
 
 def s_open():
     js("document.querySelectorAll('#tree .node.file')[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0})); 'ok'", lambda _: later(600, s_before))
@@ -69,8 +71,17 @@ def s_before():
     def got(v):
         l = json.loads(v); st["before"] = l
         check("arquivo largo aberto, com rolagem horizontal", l["rows"] > 20 and l["sw"] > l["cw"])
-        js(center("#run-btn"), lambda c: click(*json.loads(c), lambda: later(3500, s_after_run)))
+        check("status inteira no rodape com o painel fechado (fundo %d, altura %d, janela %d)" % (l["statusBottom"], l["statusH"], l["inner"]), l["hidden"] and status_ok(l))
+        js(SIDE, lambda v: (st.__setitem__("side", json.loads(v)), js(center("#sidebar-resize"), lambda c: drag(*json.loads(c), 0, s_after_side, dx=120))))
     js(LAYOUT, got)
+# a barra lateral pelo divisor da borda direita, com o mouse entregue pelo GTK
+SIDE = "JSON.stringify({w: document.getElementById('sidebar').getBoundingClientRect().width, main: document.getElementById('main').getBoundingClientRect().left})"
+def s_after_side():
+    def got(v):
+        s = json.loads(v)
+        check("arrastar o divisor da barra lateral alarga 120 px (%d -> %d) e o editor acompanha" % (st["side"]["w"], s["w"]), abs((s["w"] - st["side"]["w"]) - 120) < 2 and abs(s["main"] - s["w"]) < 1)
+        js(center("#run-btn"), lambda c: click(*json.loads(c), lambda: later(3500, s_after_run)))
+    js(SIDE, got)
 def s_after_run():
     def got(v):
         l = json.loads(v); st["run"] = l
