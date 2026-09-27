@@ -1,0 +1,59 @@
+# Release: ao empurrar uma tag v*, gera o executavel com `noxy build` no
+# Ubuntu e no Windows (cada um na propria plataforma) e publica os dois numa
+# release do GitHub com o nome da tag.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            out: dist/noxy-editor
+            asset: noxy-editor-linux-amd64
+          - os: windows-latest
+            out: dist/noxy-editor.exe
+            asset: noxy-editor-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: go install github.com/estevaofon/noxy/cmd/noxy@v0.26.0
+      - if: runner.os == 'Linux'
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - if: runner.os == 'Windows'
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$(go env GOPATH)\bin"
+      - run: noxy --sync --locked
+      - run: noxy build editor.nx -o ${{ matrix.out }}
+      - shell: bash
+        run: mv "${{ matrix.out }}" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: chmod +x dist/noxy-editor-linux-amd64
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "Noxy Editor $GITHUB_REF_NAME"
+          --generate-notes
