@@ -6,6 +6,8 @@ lexer, abas, árvore de arquivos e execução vivem no Noxy; o navegador só pin
 o que o Noxy manda e encaminha teclado e mouse. É um projeto de experimentação
 da linguagem: o que ela não deu conta está em [docs/ACHADOS.md](docs/ACHADOS.md).
 
+<img width="1721" height="1186" alt="image" src="https://github.com/user-attachments/assets/312933a5-0ad3-4e65-a5b6-af41114f5b54" />
+
 ## Rodar
 
     noxy editor.nx [pasta | arquivo]
