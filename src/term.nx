@@ -7,7 +7,7 @@
 use sys
 use errors select *
 use strings select contains
-use github_com.estevaofon.noxy_pty.noxy_pty as pty
+use github_com.noxylang.noxy_pty.noxy_pty as pty
 
 struct Term
     open: bool

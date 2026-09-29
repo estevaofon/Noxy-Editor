@@ -1,7 +1,7 @@
 # Noxy Editor
 
 Um editor de código para arquivos Noxy, escrito em
-[Noxy](https://github.com/estevaofon/noxy): abas, árvore de arquivos, busca
+[Noxy](https://github.com/noxylang/noxy): abas, árvore de arquivos, busca
 no arquivo e na pasta, F5 com a saída ao vivo, terminal integrado, git na
 árvore, minimap e temas. Buffer, cursor, seleção, undo, lexer e execução
 vivem no Noxy; a janela só pinta o que o Noxy manda e encaminha teclado e
@@ -11,22 +11,22 @@ mouse.
 
 ## Requisitos
 
-- [Noxy](https://github.com/estevaofon/noxy) v0.26.0, instalado com Go 1.25
+- [Noxy](https://github.com/noxylang/noxy) v0.26.1, instalado com Go 1.25
   ou mais novo.
 - Git, para clonar (e para o editor mostrar a branch e o status dos
   arquivos).
 
 ## Instalar
 
-    go install github.com/estevaofon/noxy/cmd/noxy@v0.26.0
-    git clone https://github.com/estevaofon/Noxy-Editor
+    go install github.com/noxylang/noxy/cmd/noxy@v0.26.1
+    git clone https://github.com/noxylang/Noxy-Editor
     cd Noxy-Editor
     noxy --sync
 
 O `go install` põe o `noxy` em `$(go env GOPATH)/bin`, que precisa estar no
 PATH. O `noxy --sync` baixa as extensões de janela
-([noxy_webview](https://github.com/estevaofon/noxy_webview)) e de terminal
-([noxy_pty](https://github.com/estevaofon/noxy_pty)) da sua plataforma para
+([noxy_webview](https://github.com/noxylang/noxy_webview)) e de terminal
+([noxy_pty](https://github.com/noxylang/noxy_pty)) da sua plataforma para
 `noxy_libs/` e confere os hashes gravados no `noxy.sum`. Sem esse passo o
 editor não abre.
 
@@ -143,9 +143,9 @@ Design e plano em `docs/superpowers/`.
 
 ### Extensões
 
-A janela é o package [noxy_webview](https://github.com/estevaofon/noxy_webview)
+A janela é o package [noxy_webview](https://github.com/noxylang/noxy_webview)
 (WebKitGTK no Linux, WebView2 no Windows, WKWebView no macOS), importado em
-`src/launch.nx`; o terminal é o [noxy_pty](https://github.com/estevaofon/noxy_pty),
+`src/launch.nx`; o terminal é o [noxy_pty](https://github.com/noxylang/noxy_pty),
 em Go puro (pty no Linux e no macOS, ConPTY no Windows), importado em
 `src/term.nx`. Os dois vêm do `noxy.mod` e são instalados pelo `noxy --sync`.
 
@@ -159,11 +159,11 @@ Para mexer na extensão em vez de usar o release, clone-a ao lado deste
 repositório, compile e linke o checkout no lugar do package instalado:
 
 ```bash
-git clone https://github.com/estevaofon/noxy_webview ../noxy_webview
+git clone https://github.com/noxylang/noxy_webview ../noxy_webview
 sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev        # Linux
 (cd ../noxy_webview && sh release/build.sh webview && mkdir -p bin && cp dist/noxy-plugin-webview-linux-amd64 bin/)
-rm -rf noxy_libs/github_com/estevaofon/noxy_webview
-ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/estevaofon/noxy_webview
+rm -rf noxy_libs/github_com/noxylang/noxy_webview
+ln -sfn "$(pwd)/../noxy_webview" noxy_libs/github_com/noxylang/noxy_webview
 ```
 
 A VM avisa uma vez que o checkout não bate com o `noxy.sum` e roda.
