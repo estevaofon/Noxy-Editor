@@ -1,13 +1,13 @@
-github.com/estevaofon/noxy_pty v0.2.0 bin/noxy-plugin-pty-darwin-amd64 sha256:70155bd09065f43bd0f6c5694d668df130bec84a00e535c8b4d5a987b711bd22
-github.com/estevaofon/noxy_pty v0.2.0 bin/noxy-plugin-pty-darwin-arm64 sha256:6f7cd1fe74d78a9e0b65e0547a36d74111e431e586712ae159e2732d52755cb9
-github.com/estevaofon/noxy_pty v0.2.0 bin/noxy-plugin-pty-linux-amd64 sha256:62c7950d259ab02edf0f63221bb0f411267fe777a75f9d86ee9d135d1f56c8c1
-github.com/estevaofon/noxy_pty v0.2.0 bin/noxy-plugin-pty-linux-arm64 sha256:4b7540db318050656ab00f0d581c0e3a92ca9142a8e18291ca209eb82c0a780b
-github.com/estevaofon/noxy_pty v0.2.0 bin/noxy-plugin-pty-windows-amd64.exe sha256:a6530e0863dec35efa77d0dcf76aa71ecdc746ce46eccc119acbec394f260f2c
-github.com/estevaofon/noxy_pty v0.2.0 noxy_ext.toml sha256:b821274ebe4238b0e34cd2b5cfd555c85f895f68e720afef56e6af10f9381f97
-github.com/estevaofon/noxy_pty v0.2.0 sha256:fb2792257b4dfb38f61b8509053637ac3be3ae561941cce4274a8ea3cfefd527
-github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-darwin-amd64 sha256:5a75729f18bd920601be0a6f33d2c7dc0cd54057d61ba1c94f490e3ef67e0746
-github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-darwin-arm64 sha256:ae90a63b91aec0de3db8f8f9ff818256c8b54d09b843b39892d5befe19aef8da
-github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-linux-amd64 sha256:87dacc6285d93ea29262780103605681bf51dad4dbc3e8fa1a70fbca353fa4fa
-github.com/estevaofon/noxy_webview v0.1.0 bin/noxy-plugin-webview-windows-amd64.exe sha256:564ee2656beef36f1e3b6730e6bdc04e6dbe01bcbbe9cc099323cf2e4b606298
-github.com/estevaofon/noxy_webview v0.1.0 noxy_ext.toml sha256:0bef1a95db3515815d16212dca2a0207c11f31ff226331003ea15967d7f31633
-github.com/estevaofon/noxy_webview v0.1.0 sha256:a946693c22336a438a14e7a81a5f9a5e926b66ab31063509b419ae5ff70d5708
+github.com/noxylang/noxy_pty v0.3.0 bin/noxy-plugin-pty-darwin-amd64 sha256:28fc6d164133bd906a5dab9321d5f5988f8f3c5e1f360bbe9c627f465007eb4a
+github.com/noxylang/noxy_pty v0.3.0 bin/noxy-plugin-pty-darwin-arm64 sha256:698b205692ebc3017125d8c967fd925fb57dc3d9f3019df6d630f8d84883f9e5
+github.com/noxylang/noxy_pty v0.3.0 bin/noxy-plugin-pty-linux-amd64 sha256:ea7e6b0217a6b5b90da43de1a12e8fbaa870d0e10c4e27aecabeff7ab2eaebbc
+github.com/noxylang/noxy_pty v0.3.0 bin/noxy-plugin-pty-linux-arm64 sha256:af23871936e57fbe0f112a2990981b52037ccd8ad071439dd76d23062074ff34
+github.com/noxylang/noxy_pty v0.3.0 bin/noxy-plugin-pty-windows-amd64.exe sha256:a20814fc30e2b744c20068b4e351c166f1b71a4411d7a60d1a8adbccae1fa8a2
+github.com/noxylang/noxy_pty v0.3.0 noxy_ext.toml sha256:b821274ebe4238b0e34cd2b5cfd555c85f895f68e720afef56e6af10f9381f97
+github.com/noxylang/noxy_pty v0.3.0 sha256:a5ca718741c0d7d47e6679a216b96fbd6429e742df8cf9b219b74de41d1ce076
+github.com/noxylang/noxy_webview v0.2.0 bin/noxy-plugin-webview-darwin-amd64 sha256:afe6c53b9c4c7b7dffc4b43ac1e0c9b632b7af6746931a0b0cbf87b48fb91269
+github.com/noxylang/noxy_webview v0.2.0 bin/noxy-plugin-webview-darwin-arm64 sha256:38432a06dffb01e99253e91321c7e62ff86b4b9e902dd203ab69f957390c2911
+github.com/noxylang/noxy_webview v0.2.0 bin/noxy-plugin-webview-linux-amd64 sha256:6efba4009f6656bed944d4aa89250dd2f244b9ff1461250ef352f3b180b59db3
+github.com/noxylang/noxy_webview v0.2.0 bin/noxy-plugin-webview-windows-amd64.exe sha256:6c481082da569c4d906f585e1583f7fdbba0e3b0235412fdd28a014d3091b790
+github.com/noxylang/noxy_webview v0.2.0 noxy_ext.toml sha256:0bef1a95db3515815d16212dca2a0207c11f31ff226331003ea15967d7f31633
+github.com/noxylang/noxy_webview v0.2.0 sha256:f9f25edd30906a24c7c3b80b0ed78bbf1042b419fbad2d97ff058b1008f5460b

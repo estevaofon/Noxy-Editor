@@ -13,7 +13,7 @@ Os números não mudam, porque o CHANGELOG do Noxy os cita; a próxima entrada
 
 ## 7. A VM exige o binário da extensão na importação
 
-**Onde:** `src/launch.nx` (`use github_com.estevaofon.noxy_webview.noxy_webview`).
+**Onde:** `src/launch.nx` (`use github_com.noxylang.noxy_webview.noxy_webview`).
 **O que:** `docs/EXTENSIONS.md` diz que o processo de uma extensão começa na
 primeira chamada, mas o `use` já falha na compilação quando o binário da
 plataforma não está em `bin/` (`extension "webview": binary ... not found —

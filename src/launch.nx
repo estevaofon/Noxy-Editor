@@ -7,7 +7,7 @@
 use sys
 use errors select *
 use src.browser as browser
-use github_com.estevaofon.noxy_webview.noxy_webview as webview
+use github_com.noxylang.noxy_webview.noxy_webview as webview
 
 let mode: string = ""       // "webview", "app", "browser" ou ""
 let redirect: string = ""   // a pagina de redirecionamento do fallback
